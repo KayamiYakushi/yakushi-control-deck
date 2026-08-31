@@ -1,0 +1,17 @@
+* {
+    yak-accent: #e8a29a;
+    yak-bg: #0e0c0d;
+    yak-surface: #1a1414;
+    yak-surface-alt: #231919;
+    yak-fg: #e8a29a;
+    yak-muted: #8e7370;
+    yak-border: #3f292a;
+    yak-hover: #362324;
+    yak-selected-fg: #1a1414;
+    yak-rofi-bg: #0e0c0de6;
+    accent: #e8a29a;
+    bg: #0e0c0d;
+    fg: #e8a29a;
+    border: #3f292a;
+    hover-bg: #362324;
+}

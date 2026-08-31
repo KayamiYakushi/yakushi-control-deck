@@ -1,0 +1,2089 @@
+from __future__ import annotations
+
+from pathlib import Path
+from urllib.parse import quote
+from html import escape
+
+from gi.repository import Gtk, Gdk, GObject, GLib, Pango
+
+from ..core.io import run
+from ..core.power import apply_mode as apply_power_mode, status as power_status
+
+from ..core.apps import (
+    KittyState,
+    RofiState,
+    WaybarState,
+    kitty_load,
+    kitty_save,
+    rofi_load,
+    rofi_save,
+    waybar_load,
+    waybar_save,
+)
+from ..core.hypr import (
+    apply_appearance,
+    apply_keyboard,
+    apply_monitor,
+    apply_monitor_layout,
+    apply_mouse,
+    current_monitor_mode,
+    monitors,
+    normalize_monitor_mode,
+    pointer_devices,
+    preferred_monitor,
+    set_preferred_monitor,
+    state,
+)
+from ..core.theme import Palette, load as load_palette, save as save_palette
+from ..core.typography import apply as apply_typography, status as typography_status
+from ..core.wallpapers import (
+    apply as apply_wallpaper,
+    current as current_wallpaper,
+    folders as wallpaper_folders,
+    recent as recent_wallpapers,
+    scan as scan_wallpapers,
+)
+from .common import (
+    action_button,
+    card,
+    open_uri,
+    page_header,
+    setting_row,
+    slider,
+    spin,
+)
+
+
+class Page(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        self.add_css_class("page")
+        self.set_margin_top(24)
+        self.set_margin_bottom(30)
+        self.set_margin_start(28)
+        self.set_margin_end(28)
+
+
+class PalettePresetCard(Gtk.Button):
+    def __init__(self, page, title: str, description: str, palette):
+        super().__init__()
+        self.page = page
+        self.palette = palette
+        self.add_css_class("theme-preset-card")
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=9)
+
+        # Mini desktop preview: a dark/light surface, a secondary panel, and a
+        # workspace strip like the user's reference.  This makes tonal themes
+        # visibly different before the user clicks them.
+        preview = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        preview_name = f"theme-preview-{id(preview)}"
+        preview.set_name(preview_name)
+        preview.set_margin_top(2)
+        preview.set_margin_bottom(2)
+        preview.set_margin_start(2)
+        preview.set_margin_end(2)
+
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=7)
+        top.set_margin_top(10)
+        top.set_margin_start(10)
+        top.set_margin_end(10)
+
+        glyph = Gtk.Label(label="薬")
+        glyph_name = f"theme-glyph-{id(glyph)}"
+        glyph.set_name(glyph_name)
+        top.append(glyph)
+
+        for label_text in ("1", "2", "3"):
+            pill = Gtk.Label(label=label_text)
+            pill_name = f"theme-pill-{id(pill)}"
+            pill.set_name(pill_name)
+            provider = Gtk.CssProvider()
+            provider.load_from_data((
+                f"#{pill_name} {{ background: {palette.surface_alt}; color: {palette.muted}; "
+                f"border: 1px solid {palette.border}; border-radius: 999px; padding: 3px 9px; }}"
+            ).encode())
+            pill.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            top.append(pill)
+
+        selected = Gtk.Label(label="4")
+        selected_name = f"theme-selected-{id(selected)}"
+        selected.set_name(selected_name)
+        top.append(selected)
+        top.set_hexpand(True)
+        preview.append(top)
+
+        surface = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        surface_name = f"theme-surface-{id(surface)}"
+        surface.set_name(surface_name)
+        surface.set_margin_start(10)
+        surface.set_margin_end(10)
+        surface.set_margin_bottom(10)
+        surface.set_margin_top(1)
+
+        heading = Gtk.Label(label="Terminal", xalign=0)
+        heading_name = f"theme-heading-{id(heading)}"
+        heading.set_name(heading_name)
+        heading.set_hexpand(True)
+        surface.append(heading)
+
+        dot = Gtk.Label(label="●")
+        dot_name = f"theme-dot-{id(dot)}"
+        dot.set_name(dot_name)
+        surface.append(dot)
+        preview.append(surface)
+
+        provider = Gtk.CssProvider()
+        provider.load_from_data((
+            f"#{preview_name} {{ background: {palette.bg}; border: 1px solid {palette.border}; border-radius: 5px; }}\n"
+            f"#{glyph_name} {{ color: {palette.accent}; font-weight: 900; }}\n"
+            f"#{selected_name} {{ background: {palette.accent}; color: {palette.selected_fg}; border-radius: 999px; padding: 3px 10px; font-weight: 900; }}\n"
+            f"#{surface_name} {{ background: {palette.surface}; border: 1px solid {palette.border}; border-radius: 4px; padding: 9px; }}\n"
+            f"#{heading_name} {{ color: {palette.fg}; font-family: serif; font-size: 17px; font-weight: 800; }}\n"
+            f"#{dot_name} {{ color: {palette.accent}; }}"
+        ).encode())
+        for widget in (preview, glyph, selected, surface, heading, dot):
+            widget.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        content.append(preview)
+
+        name = Gtk.Label(label=title, xalign=0)
+        name.add_css_class("preset-title")
+        content.append(name)
+
+        sub = Gtk.Label(label=description, xalign=0)
+        sub.add_css_class("muted")
+        sub.set_wrap(True)
+        content.append(sub)
+
+        self.set_child(content)
+        self.connect("clicked", self._apply)
+
+    def _apply(self, *_):
+        self.page.load_palette_into_controls(self.palette)
+        ok, message = save_palette(self.palette)
+        self.page.status.set_text(message)
+        if ok:
+            self.page.palette = self.palette
+
+
+class MonitorLayoutPreview(Gtk.DrawingArea):
+    def __init__(self, on_changed=None):
+        super().__init__()
+        self.monitors = []
+        self.pending = {}
+        self.preferred = ""
+        self.on_changed = on_changed
+        self.active_name = None
+        self.drag_origin = None
+        self._last_geometry = {}
+        self._last_scale = 1.0
+
+        self.set_content_width(760)
+        self.set_content_height(260)
+        self.set_draw_func(self._draw)
+
+        drag = Gtk.GestureDrag()
+        drag.connect("drag-begin", self._drag_begin)
+        drag.connect("drag-update", self._drag_update)
+        drag.connect("drag-end", self._drag_end)
+        self.add_controller(drag)
+
+    @staticmethod
+    def _logical_size(monitor):
+        scale = max(float(monitor.get("scale", 1.0)), 0.1)
+        return (
+            float(monitor.get("width", 0)) / scale,
+            float(monitor.get("height", 0)) / scale,
+        )
+
+    def set_monitors(self, monitors_list, preferred=""):
+        self.monitors = [dict(item) for item in (monitors_list or [])]
+        self.pending = {
+            monitor.get("name"): {
+                "x": int(monitor.get("x", 0)),
+                "y": int(monitor.get("y", 0)),
+            }
+            for monitor in self.monitors
+        }
+        self.preferred = preferred or ""
+        self.queue_draw()
+
+    def positions(self):
+        return {name: dict(value) for name, value in self.pending.items()}
+
+    def _bounds(self):
+        if not self.monitors:
+            return (0, 0, 1, 1)
+
+        x1, y1, x2, y2 = [], [], [], []
+        for monitor in self.monitors:
+            name = monitor.get("name")
+            pos = self.pending.get(name, {"x": 0, "y": 0})
+            w, h = self._logical_size(monitor)
+            x1.append(pos["x"])
+            y1.append(pos["y"])
+            x2.append(pos["x"] + w)
+            y2.append(pos["y"] + h)
+        return min(x1), min(y1), max(x2), max(y2)
+
+    def _geometry(self, width, height):
+        margin = 22
+        min_x, min_y, max_x, max_y = self._bounds()
+        span_x = max(max_x - min_x, 1)
+        span_y = max(max_y - min_y, 1)
+        scale = min(
+            max(width - margin * 2, 10) / span_x,
+            max(height - margin * 2, 10) / span_y,
+        )
+        scale = max(scale, 0.02)
+
+        result = {}
+        for monitor in self.monitors:
+            name = monitor.get("name")
+            pos = self.pending.get(name, {"x": 0, "y": 0})
+            logical_w, logical_h = self._logical_size(monitor)
+            result[name] = (
+                margin + (pos["x"] - min_x) * scale,
+                margin + (pos["y"] - min_y) * scale,
+                max(logical_w * scale, 84),
+                max(logical_h * scale, 54),
+            )
+        return result, scale
+
+    def _draw(self, _area, cr, width, height):
+        cr.set_source_rgb(0.03, 0.04, 0.05)
+        cr.paint()
+
+        cr.set_source_rgba(0.15, 0.14, 0.15, 1.0)
+        cr.rectangle(1, 1, width - 2, height - 2)
+        cr.set_line_width(1)
+        cr.stroke()
+
+        if not self.monitors:
+            cr.set_source_rgb(0.42, 0.39, 0.39)
+            cr.move_to(22, height / 2)
+            cr.show_text("No display data available.")
+            return
+
+        geometry, scale = self._geometry(width, height)
+        self._last_geometry = geometry
+        self._last_scale = scale
+
+        for index, monitor in enumerate(self.monitors, start=1):
+            name = monitor.get("name", f"Display {index}")
+            x, y, w, h = geometry[name]
+            preferred = name == self.preferred
+            focused = bool(monitor.get("focused", False))
+
+            cr.set_source_rgba(0.06, 0.07, 0.08, 1.0)
+            cr.rectangle(x, y, w, h)
+            cr.fill_preserve()
+
+            if preferred:
+                cr.set_source_rgb(0.92, 0.35, 0.42)
+                line = 2.6
+            elif focused:
+                cr.set_source_rgb(0.68, 0.43, 0.48)
+                line = 2.0
+            else:
+                cr.set_source_rgb(0.33, 0.30, 0.32)
+                line = 1.2
+            cr.set_line_width(line)
+            cr.stroke()
+
+            cr.set_source_rgb(0.88, 0.84, 0.81)
+            cr.move_to(x + 10, y + 18)
+            cr.show_text(name + ("  ★" if preferred else ""))
+
+            cr.set_source_rgb(0.56, 0.52, 0.50)
+            cr.move_to(x + 10, y + 34)
+            cr.show_text(
+                f'{monitor.get("width", 0)}x{monitor.get("height", 0)}  '
+                f'@{float(monitor.get("refreshRate", 0)):.0f}Hz'
+            )
+
+            pos = self.pending.get(name, {"x": 0, "y": 0})
+            cr.move_to(x + 10, y + 50)
+            cr.show_text(
+                f'Pos {pos["x"]}x{pos["y"]}  Scale {float(monitor.get("scale", 1)):.2f}'
+            )
+
+            if name == self.active_name:
+                cr.set_source_rgba(0.92, 0.35, 0.42, 0.12)
+                cr.rectangle(x, y, w, h)
+                cr.fill()
+
+    def _hit(self, x, y):
+        for name, (rx, ry, rw, rh) in self._last_geometry.items():
+            if rx <= x <= rx + rw and ry <= y <= ry + rh:
+                return name
+        return None
+
+    def _drag_begin(self, _gesture, x, y):
+        self.active_name = self._hit(x, y)
+        if not self.active_name:
+            return
+        pos = self.pending.get(self.active_name, {"x": 0, "y": 0})
+        self.drag_origin = (pos["x"], pos["y"])
+        self.queue_draw()
+
+    def _drag_update(self, _gesture, offset_x, offset_y):
+        if not self.active_name or self.drag_origin is None:
+            return
+
+        logical_x = self.drag_origin[0] + offset_x / max(self._last_scale, 0.02)
+        logical_y = self.drag_origin[1] + offset_y / max(self._last_scale, 0.02)
+
+        # 10-pixel snapping keeps Hyprland positions readable.
+        self.pending[self.active_name] = {
+            "x": int(round(logical_x / 10.0) * 10),
+            "y": int(round(logical_y / 10.0) * 10),
+        }
+        self.queue_draw()
+        if self.on_changed:
+            self.on_changed(self.positions())
+
+    def _drag_end(self, *_args):
+        if self.active_name:
+            self._resolve_overlap(self.active_name)
+            if self.on_changed:
+                self.on_changed(self.positions())
+        self.active_name = None
+        self.drag_origin = None
+        self.queue_draw()
+
+    def _logical_rect_for(self, name):
+        monitor = next((m for m in self.monitors if m.get("name") == name), None)
+        if monitor is None:
+            return None
+        pos = self.pending.get(name, {"x": 0, "y": 0})
+        w, h = self._logical_size(monitor)
+        return (pos["x"], pos["y"], pos["x"] + w, pos["y"] + h)
+
+    @staticmethod
+    def _rect_overlap(a, b):
+        return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
+
+    def _resolve_overlap(self, name):
+        current = self._logical_rect_for(name)
+        if current is None:
+            return
+
+        for other in self.monitors:
+            other_name = other.get("name")
+            if other_name == name:
+                continue
+            other_rect = self._logical_rect_for(other_name)
+            if other_rect is None or not self._rect_overlap(current, other_rect):
+                continue
+
+            monitor = next((m for m in self.monitors if m.get("name") == name), None)
+            w, h = self._logical_size(monitor)
+            old = self.pending[name]
+            candidates = [
+                {"x": int(round(other_rect[0] - w)), "y": old["y"]},
+                {"x": int(round(other_rect[2])), "y": old["y"]},
+                {"x": old["x"], "y": int(round(other_rect[1] - h))},
+                {"x": old["x"], "y": int(round(other_rect[3]))},
+            ]
+            best = min(
+                candidates,
+                key=lambda p: (p["x"] - old["x"]) ** 2 + (p["y"] - old["y"]) ** 2,
+            )
+            self.pending[name] = {
+                "x": int(round(best["x"] / 10.0) * 10),
+                "y": int(round(best["y"] / 10.0) * 10),
+            }
+            current = self._logical_rect_for(name)
+
+
+class WaybarMiniPreview(Gtk.Box):
+    SAMPLE = {
+        "custom/launcher": "薬",
+        "hyprland/workspaces": "1  2  3",
+        "hyprland/window": "Firefox",
+        "mpris": "▶ chase — batta",
+        "pulseaudio": " 35%",
+        "memory": "MEM 7.2G",
+        "cpu": "CPU 18%",
+        "custom/cpu_temp": "CPU 41°C",
+        "custom/gpu_temp": "GPU 44°C",
+        "custom/governor": "󱐋",
+        "tray": "TRAY",
+        "clock": "MON 31 AUG",
+        "clock#simpleclock": "06:39",
+        "custom/power": "⏻",
+    }
+
+    def __init__(self, owner):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        self.owner = owner
+        self.add_css_class("waybar-preview")
+
+        self.left = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.left.add_css_class("waybar-preview-lane")
+        self.left.set_hexpand(True)
+
+        self.center = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.center.add_css_class("waybar-preview-lane")
+        self.center.set_halign(Gtk.Align.CENTER)
+        self.center.set_hexpand(True)
+
+        self.right = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.right.add_css_class("waybar-preview-lane")
+        self.right.set_halign(Gtk.Align.END)
+        self.right.set_hexpand(True)
+
+        self.append(self.left)
+        self.append(self.center)
+        self.append(self.right)
+
+    def _fill(self, box, items):
+        child = box.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            box.remove(child)
+            child = nxt
+
+        if not items:
+            empty = Gtk.Label(label="—")
+            empty.add_css_class("waybar-preview-empty")
+            box.append(empty)
+            return
+
+        for module in items:
+            chip = Gtk.Box()
+            chip.add_css_class("waybar-preview-chip")
+            label = Gtk.Label(label=self.SAMPLE.get(module, self.owner.short_label(module)))
+            chip.append(label)
+            box.append(chip)
+
+    def rebuild(self):
+        self._fill(self.left, self.owner.module_state["Left"])
+        self._fill(self.center, self.owner.module_state["Center"])
+        self._fill(self.right, self.owner.module_state["Right"])
+
+
+class AppearancePage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "02",
+            "Desktop",
+            "Appearance",
+            "Choose the overall feel first. Technical controls stay available underneath."
+        ))
+
+        values = state()["appearance"]
+
+        presets = card(
+            "// STYLE PRESETS",
+            "One click changes blur, transparency, gaps, and rounding together."
+        )
+        grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+        grid.set_column_homogeneous(True)
+
+        definitions = [
+            (
+                "LIQUID GLASS",
+                "Transparent surfaces, strong blur, and soft spacing.",
+                {
+                    "gaps_in": 6,
+                    "gaps_out": 12,
+                    "border_size": 2,
+                    "rounding": 20,
+                    "blur_enabled": True,
+                    "blur_size": 11,
+                    "blur_passes": 4,
+                    "active_opacity": 0.93,
+                    "inactive_opacity": 0.86,
+                },
+            ),
+            (
+                "BALANCED",
+                "Subtle depth with comfortable readability.",
+                {
+                    "gaps_in": 4,
+                    "gaps_out": 8,
+                    "border_size": 2,
+                    "rounding": 14,
+                    "blur_enabled": True,
+                    "blur_size": 7,
+                    "blur_passes": 3,
+                    "active_opacity": 0.98,
+                    "inactive_opacity": 0.94,
+                },
+            ),
+            (
+                "SOLID",
+                "Opaque, compact, and distraction-free.",
+                {
+                    "gaps_in": 3,
+                    "gaps_out": 6,
+                    "border_size": 2,
+                    "rounding": 9,
+                    "blur_enabled": False,
+                    "blur_size": 4,
+                    "blur_passes": 1,
+                    "active_opacity": 1.0,
+                    "inactive_opacity": 1.0,
+                },
+            ),
+        ]
+
+        for index, (name, description, preset) in enumerate(definitions):
+            button = Gtk.Button()
+            button.add_css_class("preset-card")
+
+            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+
+            kicker = Gtk.Label(label=f"0{index + 1}  {name}", xalign=0)
+            kicker.add_css_class("preset-title")
+            content.append(kicker)
+
+            text = Gtk.Label(label=description, xalign=0)
+            text.set_wrap(True)
+            text.add_css_class("muted")
+            content.append(text)
+
+            button.set_child(content)
+            button.connect("clicked", self._apply_preset, preset)
+            grid.attach(button, index, 0, 1, 1)
+
+        presets.append(grid)
+        self.append(presets)
+
+        glass = card(
+            "// GLASS ENGINE",
+            "Application transparency reveals the desktop; Hyprland blur softens what sits behind it."
+        )
+
+        self.blur_enabled = Gtk.Switch(active=values["blur_enabled"])
+        self.blur_size = spin(values["blur_size"], 1, 20)
+        self.blur_passes = spin(values["blur_passes"], 1, 8)
+
+        self.active_opacity = slider(values["active_opacity"], 0.45, 1.0, 0.01)
+        self.inactive_opacity = slider(values["inactive_opacity"], 0.40, 1.0, 0.01)
+
+        glass.append(setting_row("Blur", self.blur_enabled))
+        glass.append(setting_row("Blur amount", self.blur_size))
+        glass.append(setting_row("Blur quality", self.blur_passes))
+        glass.append(setting_row(
+            "Active window opacity",
+            self.active_opacity,
+            "Lower values increase transparency."
+        ))
+        glass.append(setting_row("Inactive window opacity", self.inactive_opacity))
+        self.append(glass)
+
+        geometry = card("// WINDOWS")
+        self.gaps_in = spin(values["gaps_in"], 0, 30)
+        self.gaps_out = spin(values["gaps_out"], 0, 50)
+        self.border_size = spin(values["border_size"], 0, 8)
+        self.rounding = spin(values["rounding"], 0, 40)
+
+        geometry.append(setting_row("Window spacing", self.gaps_in))
+        geometry.append(setting_row("Screen edge spacing", self.gaps_out))
+        geometry.append(setting_row("Border thickness", self.border_size))
+        geometry.append(setting_row("Corner roundness", self.rounding))
+        self.append(geometry)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+
+        self.append(action_button("APPLY APPEARANCE", self.apply, primary=True))
+        self.append(self.status)
+
+    def _read_values(self):
+        return {
+            "gaps_in": int(self.gaps_in.get_value()),
+            "gaps_out": int(self.gaps_out.get_value()),
+            "border_size": int(self.border_size.get_value()),
+            "rounding": int(self.rounding.get_value()),
+            "blur_enabled": self.blur_enabled.get_active(),
+            "blur_size": int(self.blur_size.get_value()),
+            "blur_passes": int(self.blur_passes.get_value()),
+            "active_opacity": round(self.active_opacity.scale.get_value(), 2),
+            "inactive_opacity": round(self.inactive_opacity.scale.get_value(), 2),
+        }
+
+    def _set_values(self, values):
+        self.gaps_in.set_value(values["gaps_in"])
+        self.gaps_out.set_value(values["gaps_out"])
+        self.border_size.set_value(values["border_size"])
+        self.rounding.set_value(values["rounding"])
+        self.blur_enabled.set_active(values["blur_enabled"])
+        self.blur_size.set_value(values["blur_size"])
+        self.blur_passes.set_value(values["blur_passes"])
+        self.active_opacity.scale.set_value(values["active_opacity"])
+        self.inactive_opacity.scale.set_value(values["inactive_opacity"])
+
+    def _apply_preset(self, _button, values):
+        self._set_values(values)
+        _, message = apply_appearance(values)
+        self.status.set_text(message)
+
+    def apply(self, *_):
+        _, message = apply_appearance(self._read_values())
+        self.status.set_text(message)
+
+
+class WallpaperPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "02",
+            "Desktop",
+            "Wallpapers",
+            "Images under ~/Pictures and ~/Documents are indexed automatically. Filter by folder or jump back to recent wallpapers."
+        ))
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        self.count = Gtk.Label(xalign=0)
+        self.count.add_css_class("meta")
+        self.count.set_hexpand(True)
+        toolbar.append(self.count)
+
+        self.search = Gtk.SearchEntry(placeholder_text="Filter images...")
+        self.search.set_size_request(210, -1)
+        self.search.connect("search-changed", lambda *_: self.render())
+        toolbar.append(self.search)
+
+        self.filter_options = ["All folders", "Recent"]
+        self.folder_filter = Gtk.DropDown.new_from_strings(self.filter_options)
+        self.folder_filter.connect("notify::selected", lambda *_: self.render())
+        toolbar.append(self.folder_filter)
+
+        refresh = action_button("RESCAN", lambda *_: self.refresh())
+        toolbar.append(refresh)
+        self.append(toolbar)
+
+        self.recent_card = card(
+            "// RECENT",
+            "Your most recently applied wallpapers stay one click away."
+        )
+        self.recent_flow = Gtk.FlowBox()
+        self.recent_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.recent_flow.set_max_children_per_line(6)
+        self.recent_flow.set_column_spacing(8)
+        self.recent_flow.set_row_spacing(8)
+        self.recent_card.append(self.recent_flow)
+        self.append(self.recent_card)
+
+        library = card(
+            "// WALLPAPER LIBRARY",
+            "Folder filtering never moves or copies your files; it only changes what is shown here."
+        )
+        self.flow = Gtk.FlowBox()
+        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flow.set_min_children_per_line(2)
+        self.flow.set_max_children_per_line(4)
+        self.flow.set_column_spacing(10)
+        self.flow.set_row_spacing(10)
+        self.flow.set_homogeneous(True)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(470)
+        scroll.set_child(self.flow)
+        library.append(scroll)
+        self.append(library)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+        self.append(self.status)
+
+        self.all_images = []
+        self.recent_images = []
+        self.current_path = None
+        self.refresh()
+
+    @staticmethod
+    def _clear_flow(flow):
+        child = flow.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            flow.remove(child)
+            child = nxt
+
+    def refresh(self):
+        self.all_images = scan_wallpapers()
+        self.recent_images = recent_wallpapers()
+        self.current_path = current_wallpaper()
+
+        folders = wallpaper_folders()
+        self.filter_options = ["All folders", "Recent", *folders]
+        model = Gtk.StringList.new(self.filter_options)
+        self.folder_filter.set_model(model)
+        self.folder_filter.set_selected(0)
+
+        self._clear_flow(self.recent_flow)
+        for path in self.recent_images[:6]:
+            self.recent_flow.insert(self._tile(path, compact=True), -1)
+        self.recent_card.set_visible(bool(self.recent_images))
+        self.render()
+
+    def render(self):
+        self._clear_flow(self.flow)
+
+        selected_index = self.folder_filter.get_selected()
+        selected = (
+            self.filter_options[selected_index]
+            if 0 <= selected_index < len(self.filter_options)
+            else "All folders"
+        )
+
+        if selected == "Recent":
+            images = list(self.recent_images)
+        elif selected == "All folders":
+            images = list(self.all_images)
+        else:
+            images = scan_wallpapers(folder=selected)
+
+        query = self.search.get_text().strip().lower()
+        if query:
+            images = [
+                path for path in images
+                if query in path.name.lower() or query in str(path.parent).lower()
+            ]
+
+        self.count.set_text(f"{len(images)} SHOWN // {len(self.all_images)} INDEXED")
+
+        for path in images:
+            self.flow.insert(self._tile(path), -1)
+
+        if not images:
+            self.status.set_text("No wallpapers match the current filter.")
+        else:
+            self.status.set_text("")
+
+    def _tile(self, path: Path, compact=False):
+        button = Gtk.Button()
+        button.add_css_class("wallpaper-tile")
+        if self.current_path and path == self.current_path:
+            button.add_css_class("wallpaper-current")
+        button.set_size_request(150 if compact else 210, 100 if compact else 145)
+
+        overlay = Gtk.Overlay()
+
+        picture = Gtk.Picture.new_for_filename(str(path))
+        picture.set_content_fit(Gtk.ContentFit.COVER)
+        picture.set_can_shrink(True)
+        overlay.set_child(picture)
+
+        label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        label_box.add_css_class("wallpaper-label")
+        label_box.set_halign(Gtk.Align.FILL)
+        label_box.set_valign(Gtk.Align.END)
+        label_box.set_margin_start(7)
+        label_box.set_margin_end(7)
+        label_box.set_margin_bottom(7)
+
+        name = Gtk.Label(label=path.stem, xalign=0)
+        name.set_ellipsize(3)
+        name.add_css_class("wallpaper-name")
+        label_box.append(name)
+
+        try:
+            folder_text = str(path.parent.relative_to(Path.home()))
+        except ValueError:
+            folder_text = str(path.parent)
+
+        folder = Gtk.Label(label=folder_text, xalign=0)
+        folder.set_ellipsize(3)
+        folder.add_css_class("wallpaper-folder")
+        label_box.append(folder)
+
+        overlay.add_overlay(label_box)
+        button.set_child(overlay)
+        button.connect("clicked", self._apply, path)
+        return button
+
+    def _apply(self, _button, path):
+        ok, message = apply_wallpaper(path)
+        self.status.set_text(f"{path.name} — {message}")
+        if ok:
+            self.current_path = path
+            self.recent_images = recent_wallpapers()
+            self.render()
+            self._clear_flow(self.recent_flow)
+            for recent_path in self.recent_images[:6]:
+                self.recent_flow.insert(self._tile(recent_path, compact=True), -1)
+            self.recent_card.set_visible(True)
+
+
+class ThemePage(Page):
+    # Each preset has nine roles.  The point is not "same black theme, new
+    # accent"; the background, raised surfaces, borders, muted text and hover
+    # depth all move together inside one color family.
+    PRESET_GROUPS = [
+        (
+            "DUSTED / MUTED",
+            "Low-strain tonal palettes inspired by the dusty salmon reference you sent.",
+            [
+                (
+                    "SALMON DUST",
+                    "The reference family: charcoal-brown surfaces with dusty salmon highlights.",
+                    Palette("#e8a29a", "#0e0c0d", "#1a1414", "#231919", "#e8a29a", "#a77772", "#3f292a", "#362324", "#1a1414"),
+                ),
+                (
+                    "ROSEWOOD",
+                    "Muted rose, walnut-black surfaces and warmer cream text.",
+                    Palette("#cf8d91", "#100d0e", "#1e1718", "#2a1d1f", "#d7a1a4", "#986f73", "#4b3034", "#3a2529", "#1a1214"),
+                ),
+                (
+                    "BLUSH CHARCOAL",
+                    "Cool charcoal with a powder-blush accent and grey-rose secondary text.",
+                    Palette("#d9a4ab", "#0d0d0f", "#18171a", "#222025", "#dcb7bd", "#907d82", "#3b3439", "#302a30", "#171417"),
+                ),
+                (
+                    "PEACH SMOKE",
+                    "Smoked brown-black with quiet peach and warm parchment foregrounds.",
+                    Palette("#dca58c", "#100e0d", "#1d1815", "#29201b", "#e0ad96", "#9b7a6b", "#49372e", "#382b25", "#191411"),
+                ),
+            ],
+        ),
+        (
+            "RED / BLACK",
+            "For when red should dominate the desktop without turning into a generic neon preset.",
+            [
+                (
+                    "VERMILION INK",
+                    "Ink-black layers with hot vermilion and warm off-white text.",
+                    Palette("#f04b45", "#070607", "#120d0e", "#1d1113", "#f06b64", "#a65e5b", "#502127", "#34151a", "#120a0b"),
+                ),
+                (
+                    "CRIMSON VELVET",
+                    "Deep velvet red surfaces; less neon, more saturated fabric-like crimson.",
+                    Palette("#d93a4a", "#090607", "#170b0e", "#241014", "#e36775", "#9d626c", "#5c222e", "#39151c", "#16090c"),
+                ),
+                (
+                    "OXBLOOD",
+                    "Near-black burgundy with dense oxblood borders and a muted red signal.",
+                    Palette("#b84a55", "#090708", "#150d0f", "#201215", "#c8767e", "#8e656b", "#4b252c", "#321a1f", "#140b0d"),
+                ),
+                (
+                    "CHERRY BLACK",
+                    "Black cherry layers with brighter selected workspaces but restrained body text.",
+                    Palette("#e05268", "#080607", "#150a0e", "#231019", "#e77a8b", "#9d6571", "#572334", "#371522", "#14090c"),
+                ),
+            ],
+        ),
+        (
+            "SOFT / MILK",
+            "Pastel families with genuinely light surfaces, not dark themes wearing pastel accents.",
+            [
+                (
+                    "SAKURA MILK",
+                    "Milky pink background, rose surfaces, muted berry text and soft cherry selection.",
+                    Palette("#cb7f91", "#f2e7e9", "#ead8dc", "#dfc8ce", "#34262a", "#80686e", "#c8aeb5", "#e2cbd1", "#2b2023"),
+                ),
+                (
+                    "LILAC MILK",
+                    "Pale lavender, dusty violet panels and plum-grey typography.",
+                    Palette("#9985c7", "#eeeaf5", "#e3dced", "#d7cee4", "#312b38", "#766d80", "#beb3cf", "#dbd2e8", "#28232e"),
+                ),
+                (
+                    "MINT MILK",
+                    "Sage-mint paper surfaces with botanical green accent and charcoal text.",
+                    Palette("#6f9d82", "#e9f0ea", "#dce8df", "#cfddd3", "#263129", "#68786d", "#b4c6b9", "#d3e1d6", "#202922"),
+                ),
+                (
+                    "POWDER BLUE",
+                    "Powder-blue paper, misty raised layers and calm slate-blue text.",
+                    Palette("#7798bd", "#e9eef3", "#dce5ed", "#cfdae5", "#25313d", "#657486", "#b2c1d0", "#d1dce7", "#202a34"),
+                ),
+                (
+                    "BUTTER CREAM",
+                    "Warm ivory and butter surfaces with a muted honey accent.",
+                    Palette("#b78c50", "#f3eee2", "#e9dfcd", "#ddd0b9", "#352e23", "#7f7463", "#c8b99f", "#e4d8c2", "#2b251d"),
+                ),
+            ],
+        ),
+        (
+            "DEEP COLOR",
+            "The same tonal philosophy in purple, green, teal, blue and amber families.",
+            [
+                (
+                    "PLUM VELVET",
+                    "Black-plum surfaces with dusty orchid accents and pale mauve text.",
+                    Palette("#b483a9", "#0b090d", "#17121a", "#211826", "#c69abb", "#8e748c", "#433047", "#312337", "#160f18"),
+                ),
+                (
+                    "SAGE NOIR",
+                    "Charcoal-green surfaces, dry sage accent and warm botanical foreground.",
+                    Palette("#8da58d", "#090b09", "#131814", "#1b221d", "#a8bba8", "#748176", "#344139", "#27302a", "#111612"),
+                ),
+                (
+                    "PETROL SMOKE",
+                    "Smoky petrol blue/green with desaturated cyan and stone-grey text.",
+                    Palette("#77a9ad", "#080b0c", "#10181a", "#172326", "#8fc0c3", "#6d8588", "#304449", "#233438", "#101719"),
+                ),
+                (
+                    "INDIGO INK",
+                    "Ink-blue layers with dusty periwinkle and cool silver foregrounds.",
+                    Palette("#8595c9", "#08090d", "#11141d", "#191e2b", "#9cabe0", "#747d9a", "#31394f", "#242a3d", "#10131b"),
+                ),
+                (
+                    "AMBER TOBACCO",
+                    "Dark tobacco brown, restrained amber and parchment-like foregrounds.",
+                    Palette("#c49355", "#0c0a07", "#18130d", "#241b11", "#d2a66d", "#90785b", "#493822", "#362818", "#171109"),
+                ),
+            ],
+        ),
+    ]
+
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "02",
+            "Desktop",
+            "Theme Studio",
+            "What you see in each preset is what gets written: background, surfaces, borders, hover depth and text all move together."
+        ))
+
+        self.palette = load_palette()
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+
+        reference = card(
+            "// YOUR REFERENCE",
+            "SALMON DUST now uses the dusty salmon itself as normal foreground text — no near-white fallback. The preview and applied foreground share the same role."
+        )
+        ref_line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=7)
+        for label, color in (("ACCENT", "#e8a29a"), ("SURFACE", "#1a1414"), ("DEPTH", "#231919"), ("BORDER", "#3f292a")):
+            item = Gtk.Label(label=label)
+            name = f"reference-{id(item)}"
+            item.set_name(name)
+            provider = Gtk.CssProvider()
+            provider.load_from_data(
+                f"#{name} {{ background: {color}; color: {'#171313' if color == '#e8a29a' else '#e8d9d5'}; border: 1px solid #4b3030; border-radius: 999px; padding: 5px 10px; font-size: 9px; font-weight: 800; }}".encode()
+            )
+            item.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            ref_line.append(item)
+        reference.append(ref_line)
+        self.append(reference)
+
+        for group_name, group_description, presets in self.PRESET_GROUPS:
+            group = card(f"// {group_name}", group_description)
+            grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+            grid.set_column_homogeneous(True)
+            for index, (title, description, palette) in enumerate(presets):
+                grid.attach(PalettePresetCard(self, title, description, palette), index % 2, index // 2, 1, 1)
+            group.append(grid)
+            self.append(group)
+
+        palette_card = card(
+            "// CUSTOM TONAL PALETTE",
+            "Fine tune the roles yourself. Surface is the main module/input panel; Depth is the raised secondary layer."
+        )
+
+        self.buttons = {}
+        values = [
+            ("accent", "Accent"),
+            ("bg", "Background"),
+            ("surface", "Surface"),
+            ("surface_alt", "Depth"),
+            ("fg", "Foreground"),
+            ("muted", "Muted text"),
+            ("border", "Border"),
+            ("hover_bg", "Hover"),
+            ("selected_fg", "Selected text"),
+        ]
+
+        grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+        grid.set_column_homogeneous(True)
+        for index, (key, label) in enumerate(values):
+            button = Gtk.ColorDialogButton(dialog=Gtk.ColorDialog())
+            self.buttons[key] = button
+            chip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            chip.add_css_class("color-chip")
+            title = Gtk.Label(label=label, xalign=0)
+            title.add_css_class("setting-name")
+            chip.append(title)
+            chip.append(button)
+            grid.attach(chip, index % 3, index // 3, 1, 1)
+
+        palette_card.append(grid)
+        self.append(palette_card)
+        self.append(action_button("APPLY CUSTOM TONAL PALETTE", self.apply, primary=True))
+
+        self._build_typography()
+        self.append(self.status)
+        self.load_palette_into_controls(self.palette)
+
+    def _build_typography(self):
+        typography = typography_status()
+        self.typography_enabled = bool(typography.get("enabled"))
+        self.typography_terminal = bool(typography.get("terminal_too"))
+        self.fonts = typography.get("available_fonts") or ["serif"]
+
+        panel = card(
+            "// DESKTOP TYPOGRAPHY",
+            "A bold editorial serif like the Terminal heading in your reference. It can be enabled desktop-wide and restored with one click."
+        )
+
+        preview = Gtk.Label(xalign=0)
+        preview.add_css_class("typography-preview")
+        panel.append(preview)
+        self.font_preview = preview
+
+        self.font_dropdown = Gtk.DropDown.new_from_strings(self.fonts)
+        current_family = typography.get("family") or self.fonts[0]
+        try:
+            self.font_dropdown.set_selected(self.fonts.index(current_family))
+        except ValueError:
+            self.font_dropdown.set_selected(0)
+        self.font_dropdown.connect("notify::selected", self._font_preview_changed)
+        panel.append(setting_row(
+            "Editorial serif",
+            self.font_dropdown,
+            "Uses an already installed serif font discovered through fontconfig; Yakushi installs no extra font package."
+        ))
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.typography_button = Gtk.Button()
+        self.typography_button.add_css_class("typography-toggle")
+        self.typography_button.connect("clicked", self._toggle_typography)
+        actions.append(self.typography_button)
+
+        self.terminal_font_button = Gtk.Button()
+        self.terminal_font_button.add_css_class("typography-option")
+        self.terminal_font_button.connect("clicked", self._toggle_terminal_font)
+        actions.append(self.terminal_font_button)
+
+        apply_font = Gtk.Button(label="APPLY SELECTED FONT")
+        apply_font.add_css_class("typography-option")
+        apply_font.connect("clicked", self._reapply_typography)
+        actions.append(apply_font)
+
+        panel.append(actions)
+
+        note = Gtk.Label(
+            label="Desktop mode targets GTK 3/4 apps, Waybar and Rofi. Terminal text stays monospace by default so Nerd Font icons, prompts and columns remain safe.",
+            xalign=0,
+        )
+        note.set_wrap(True)
+        note.add_css_class("muted")
+        panel.append(note)
+
+        self.append(panel)
+        self._refresh_typography_controls()
+        self._font_preview_changed()
+
+    def _selected_font(self):
+        if not self.fonts:
+            return "serif"
+        index = min(self.font_dropdown.get_selected(), len(self.fonts) - 1)
+        return self.fonts[index]
+
+    def _font_preview_changed(self, *_):
+        family = self._selected_font()
+        self.font_preview.set_markup(
+            f'<span font_family="{escape(family)}" size="30000" weight="bold">Terminal</span>'
+        )
+
+    def _refresh_typography_controls(self):
+        self.typography_button.set_label(
+            "DESKTOP SERIF: ON" if self.typography_enabled else "DESKTOP SERIF: OFF"
+        )
+        if self.typography_enabled:
+            self.typography_button.add_css_class("active")
+        else:
+            self.typography_button.remove_css_class("active")
+
+        self.terminal_font_button.set_label(
+            "TERMINAL TEXT: SERIF" if self.typography_terminal else "TERMINAL TEXT: KEEP MONOSPACE"
+        )
+        if self.typography_terminal:
+            self.terminal_font_button.add_css_class("active")
+        else:
+            self.terminal_font_button.remove_css_class("active")
+
+    def _set_live_gtk_font(self, family: str | None):
+        try:
+            settings = Gtk.Settings.get_default()
+            if settings and family:
+                settings.set_property("gtk-font-name", f"{family} 11")
+        except Exception:
+            pass
+
+    def _toggle_typography(self, *_):
+        new_value = not self.typography_enabled
+        family = self._selected_font()
+        ok, message = apply_typography(new_value, family, self.typography_terminal)
+        if ok:
+            self.typography_enabled = new_value
+            if new_value:
+                self._set_live_gtk_font(family)
+            else:
+                refreshed = typography_status()
+                # GTK settings.ini will be authoritative on next app launch;
+                # live restoration is best effort and avoids inventing a font.
+                self.typography_terminal = False
+        self._refresh_typography_controls()
+        self.status.set_text(message)
+
+    def _toggle_terminal_font(self, *_):
+        self.typography_terminal = not self.typography_terminal
+        self._refresh_typography_controls()
+        if self.typography_enabled:
+            ok, message = apply_typography(True, self._selected_font(), self.typography_terminal)
+            self.status.set_text(message)
+
+    def _reapply_typography(self, *_):
+        if not self.typography_enabled:
+            self.status.set_text("Enable DESKTOP SERIF first, then this button updates the selected family.")
+            return
+        family = self._selected_font()
+        ok, message = apply_typography(True, family, self.typography_terminal)
+        if ok:
+            self._set_live_gtk_font(family)
+        self.status.set_text(message)
+
+    @staticmethod
+    def _hex(button):
+        rgba = button.get_rgba()
+        return "#{:02x}{:02x}{:02x}".format(
+            round(rgba.red * 255),
+            round(rgba.green * 255),
+            round(rgba.blue * 255),
+        )
+
+    def load_palette_into_controls(self, palette: Palette):
+        self.palette = palette
+        for key in self.buttons:
+            rgba = Gdk.RGBA()
+            rgba.parse(getattr(palette, key))
+            self.buttons[key].set_rgba(rgba)
+
+    def apply(self, *_):
+        value = Palette(**{key: self._hex(button) for key, button in self.buttons.items()})
+        self.palette = value
+        _, message = save_palette(value)
+        self.status.set_text(message)
+
+
+class DisplaysPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "01",
+            "Devices",
+            "Displays",
+            "Drag monitor blocks to arrange them, then apply the layout. Resolution and DPI stay available below."
+        ))
+
+        preview_card = card(
+            "// LAYOUT EDITOR",
+            "Drag a monitor block. Positions snap to 10 logical pixels. ★ marks Yakushi's preferred/focused display."
+        )
+        preview_card.add_css_class("monitor-map-card")
+
+        self.map = MonitorLayoutPreview(on_changed=self._layout_changed)
+        preview_card.append(self.map)
+
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.layout_status = Gtk.Label(xalign=0)
+        self.layout_status.add_css_class("monitor-map-summary")
+        self.layout_status.set_hexpand(True)
+        controls.append(self.layout_status)
+
+        self.preferred_names = []
+        self.preferred_box = Gtk.DropDown.new_from_strings(["No displays"])
+        controls.append(self.preferred_box)
+
+        preferred_button = action_button("SET PREFERRED", self.set_preferred)
+        controls.append(preferred_button)
+
+        apply_layout = action_button("APPLY LAYOUT", self.apply_layout, primary=True)
+        controls.append(apply_layout)
+
+        preview_card.append(controls)
+        self.append(preview_card)
+
+        note = card(
+            "// PRIMARY DISPLAY NOTE",
+            "Hyprland has no Windows-style global primary-monitor flag. Yakushi's Preferred display is focused immediately and remembered as the deck's default target."
+        )
+        self.append(note)
+
+        self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.append(self.container)
+
+        self.refresh_button = action_button("RESCAN DISPLAYS", lambda *_: self.refresh())
+        self.append(self.refresh_button)
+
+        self.monitor_list = []
+        self.refresh()
+
+    def _layout_changed(self, _positions):
+        self.layout_status.set_text("Layout changed — press APPLY LAYOUT to send positions to Hyprland.")
+
+    def refresh(self):
+        child = self.container.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            self.container.remove(child)
+            child = nxt
+
+        self.monitor_list = monitors()
+        preferred = preferred_monitor()
+        if not preferred and self.monitor_list:
+            focused = next((m for m in self.monitor_list if m.get("focused")), None)
+            preferred = focused.get("name", "") if focused else self.monitor_list[0].get("name", "")
+
+        self.map.set_monitors(self.monitor_list, preferred=preferred)
+
+        self.preferred_names = [m.get("name", "") for m in self.monitor_list]
+        if self.preferred_names:
+            self.preferred_box.set_model(Gtk.StringList.new(self.preferred_names))
+            try:
+                self.preferred_box.set_selected(self.preferred_names.index(preferred))
+            except ValueError:
+                self.preferred_box.set_selected(0)
+        else:
+            self.preferred_box.set_model(Gtk.StringList.new(["No displays"]))
+            self.preferred_box.set_selected(0)
+
+        self.layout_status.set_text(f"{len(self.monitor_list)} display(s) detected.")
+
+        for monitor in self.monitor_list:
+            self.container.append(self._monitor_card(monitor))
+
+    def set_preferred(self, *_):
+        if not self.preferred_names:
+            self.layout_status.set_text("No display is available.")
+            return
+        name = self.preferred_names[self.preferred_box.get_selected()]
+        ok, message = set_preferred_monitor(name)
+        self.layout_status.set_text(message)
+        if ok:
+            self.map.preferred = name
+            self.map.queue_draw()
+
+    def apply_layout(self, *_):
+        if not self.monitor_list:
+            self.layout_status.set_text("No displays are available.")
+            return
+
+        positions = self.map.positions()
+        layout = []
+        for monitor in self.monitor_list:
+            name = monitor.get("name")
+            pos = positions.get(name, {"x": monitor.get("x", 0), "y": monitor.get("y", 0)})
+            mode = (
+                f'{monitor.get("width")}x{monitor.get("height")}@'
+                f'{float(monitor.get("refreshRate", 60)):.2f}'
+            )
+            layout.append({
+                "name": name,
+                "mode": mode,
+                "position": f'{pos["x"]}x{pos["y"]}',
+                "scale": float(monitor.get("scale", 1.0)),
+            })
+
+        _ok, message = apply_monitor_layout(layout)
+        self.layout_status.set_text(message)
+        GLib.timeout_add(350, self._delayed_refresh)
+
+    def _delayed_refresh(self):
+        self.refresh()
+        return False
+
+    def _monitor_card(self, monitor):
+        name = monitor.get("name", "Display")
+        description = monitor.get("description", "")
+
+        panel = card(f"// {name}", description)
+
+        summary = Gtk.Label(
+            label=(
+                f'{monitor.get("width")}×{monitor.get("height")}  '
+                f'@ {float(monitor.get("refreshRate", 0)):.0f} HZ    '
+                f'SCALE {float(monitor.get("scale", 1)):.2f}'
+            ),
+            xalign=0,
+        )
+        summary.add_css_class("monitor-summary")
+        panel.append(summary)
+
+        modes = monitor.get("availableModes") or [current_monitor_mode(monitor)]
+        mode = Gtk.DropDown.new_from_strings(modes)
+
+        # Match both resolution AND refresh rate. Previous previews selected the
+        # first entry with the same resolution, which is why a 200 Hz display
+        # could misleadingly open on 60 Hz.
+        current_mode = normalize_monitor_mode(current_monitor_mode(monitor))
+        current_index = 0
+        best_delta = float("inf")
+        target_refresh = float(monitor.get("refreshRate", 60.0))
+        for index, candidate in enumerate(modes):
+            clean = normalize_monitor_mode(candidate)
+            if clean == current_mode:
+                current_index = index
+                best_delta = 0.0
+                break
+            match = __import__("re").match(r'^(\d+)x(\d+)@([0-9.]+)$', clean)
+            if not match:
+                continue
+            if int(match.group(1)) != int(monitor.get("width", 0)) or int(match.group(2)) != int(monitor.get("height", 0)):
+                continue
+            delta = abs(float(match.group(3)) - target_refresh)
+            if delta < best_delta:
+                best_delta = delta
+                current_index = index
+        mode.set_selected(current_index)
+
+        scale_values = ["0.75", "1.00", "1.25", "1.50", "1.75", "2.00"]
+        scale = Gtk.DropDown.new_from_strings(scale_values)
+
+        current_scale = float(monitor.get("scale", 1))
+        nearest = min(
+            range(len(scale_values)),
+            key=lambda i: abs(float(scale_values[i]) - current_scale),
+        )
+        scale.set_selected(nearest)
+
+        panel.append(setting_row("Resolution / refresh", mode))
+        panel.append(setting_row(
+            "UI scale / DPI",
+            scale,
+            "1.00 is native scale. Increase this if the interface feels too small."
+        ))
+
+        advanced = Gtk.Expander(label="ADVANCED POSITION")
+        position = Gtk.Entry(text=f'{monitor.get("x", 0)}x{monitor.get("y", 0)}')
+        advanced.set_child(setting_row(
+            "Position",
+            position,
+            "You can type an exact value here, or use the drag editor above."
+        ))
+        panel.append(advanced)
+
+        status = Gtk.Label(xalign=0)
+        status.add_css_class("status")
+
+        def apply(*_):
+            model = mode.get_model()
+            selected_mode = model.get_string(mode.get_selected())
+            selected_scale = float(scale_values[scale.get_selected()])
+            ok, message = apply_monitor(
+                name,
+                selected_mode,
+                position.get_text().strip() or "0x0",
+                selected_scale,
+            )
+            status.set_text(message)
+            if ok:
+                GLib.timeout_add(450, self._delayed_refresh)
+
+        panel.append(action_button("APPLY DISPLAY", apply, primary=True))
+        panel.append(status)
+        return panel
+
+
+class PowerPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "01",
+            "Devices",
+            "Power Management",
+            "Switch between a responsive Performance profile and an everyday Balanced profile."
+        ))
+
+        chooser = card(
+            "// POWER MODE",
+            "Balanced keeps boost available while reducing unnecessary power use. Performance prioritizes responsiveness."
+        )
+
+        buttons = Gtk.Grid(column_spacing=10, row_spacing=10)
+        buttons.set_column_homogeneous(True)
+
+        balanced = Gtk.Button()
+        balanced.add_css_class("power-profile-card")
+        balanced_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        balanced_title = Gtk.Label(label="BALANCED", xalign=0)
+        balanced_title.add_css_class("preset-title")
+        balanced_box.append(balanced_title)
+        balanced_desc = Gtk.Label(
+            label="Recommended for normal desktop use. Dynamic boosting stays available, but power and heat are kept under control.",
+            xalign=0,
+        )
+        balanced_desc.add_css_class("muted")
+        balanced_desc.set_wrap(True)
+        balanced_box.append(balanced_desc)
+        balanced.set_child(balanced_box)
+        balanced.connect("clicked", lambda *_: self.apply_mode("balanced"))
+        buttons.attach(balanced, 0, 0, 1, 1)
+
+        performance = Gtk.Button()
+        performance.add_css_class("power-profile-card")
+        performance_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        performance_title = Gtk.Label(label="PERFORMANCE", xalign=0)
+        performance_title.add_css_class("preset-title")
+        performance_box.append(performance_title)
+        performance_desc = Gtk.Label(
+            label="Prioritizes maximum responsiveness and sustained clocks. Expect more power use and heat.",
+            xalign=0,
+        )
+        performance_desc.add_css_class("muted")
+        performance_desc.set_wrap(True)
+        performance_box.append(performance_desc)
+        performance.set_child(performance_box)
+        performance.connect("clicked", lambda *_: self.apply_mode("performance"))
+        buttons.attach(performance, 1, 0, 1, 1)
+
+        chooser.append(buttons)
+        self.append(chooser)
+
+        self.status_card = card("// CURRENT STATE")
+        self.backend = Gtk.Label(xalign=0)
+        self.driver = Gtk.Label(xalign=0)
+        self.governor = Gtk.Label(xalign=0)
+        self.epp = Gtk.Label(xalign=0)
+        self.mode = Gtk.Label(xalign=0)
+
+        self.status_card.append(setting_row("Mode", self.mode))
+        self.status_card.append(setting_row("Backend", self.backend))
+        self.status_card.append(setting_row("CPU driver", self.driver))
+        self.status_card.append(setting_row("Governor", self.governor))
+        self.status_card.append(setting_row("Energy preference", self.epp))
+        self.append(self.status_card)
+
+        note = card(
+            "// NO EXTRA POWER STACK",
+            "If power-profiles-daemon already exists, Yakushi uses it. Otherwise it uses the kernel CPUFreq / AMD P-State controls through the standard Polkit authorization dialog."
+        )
+        self.append(note)
+
+        refresh = action_button("REFRESH POWER STATUS", lambda *_: self.refresh())
+        self.append(refresh)
+
+        self.message = Gtk.Label(xalign=0)
+        self.message.add_css_class("status")
+        self.message.set_wrap(True)
+        self.append(self.message)
+
+        self.refresh()
+
+    def refresh(self):
+        current = power_status()
+        self.mode.set_text(current.get("mode", "unknown").upper())
+        self.backend.set_text(current.get("backend", "Unknown"))
+        self.driver.set_text(current.get("driver", "Unknown"))
+        self.governor.set_text(current.get("governor", "Unknown"))
+        self.epp.set_text(current.get("epp", "Not exposed"))
+
+        if not current.get("supported"):
+            self.message.set_text("No supported CPU power-management interface was detected.")
+
+    def apply_mode(self, mode: str):
+        ok, message = apply_power_mode(mode)
+        self.message.set_text(message)
+        if ok:
+            GLib.timeout_add(250, self._delayed_refresh)
+
+    def _delayed_refresh(self):
+        self.refresh()
+        return False
+
+
+class InputPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "01",
+            "Devices",
+            "Input",
+            "Keyboard and pointer settings are applied independently, so one device cannot block the other."
+        ))
+
+        current = state()
+
+        keyboard = card("// KEYBOARD")
+
+        self.layouts = [
+            ("Turkish", "tr"),
+            ("English (US)", "us"),
+            ("English (UK)", "gb"),
+            ("German", "de"),
+            ("French", "fr"),
+            ("Spanish", "es"),
+            ("Italian", "it"),
+            ("Japanese", "jp"),
+        ]
+
+        self.layout = Gtk.DropDown.new_from_strings([label for label, _ in self.layouts])
+        current_layout = current["keyboard"]["layout"]
+        index = next(
+            (i for i, (_, code) in enumerate(self.layouts) if code == current_layout),
+            0,
+        )
+        self.layout.set_selected(index)
+
+        self.repeat_rate = spin(current["keyboard"]["repeat_rate"], 1, 100)
+        self.repeat_delay = spin(current["keyboard"]["repeat_delay"], 100, 2000, 10)
+
+        keyboard.append(setting_row("Language", self.layout))
+        keyboard.append(setting_row("Repeat speed", self.repeat_rate))
+        keyboard.append(setting_row("Repeat delay", self.repeat_delay))
+
+        self.keyboard_status = Gtk.Label(xalign=0)
+        self.keyboard_status.add_css_class("status")
+        keyboard.append(action_button("APPLY KEYBOARD", self.apply_keyboard_settings, primary=True))
+        keyboard.append(self.keyboard_status)
+        self.append(keyboard)
+
+        mouse = card(
+            "// MOUSE",
+            "Pointer speed uses Hyprland’s live device API. Applying a speed profile temporarily disables force_no_accel because that option bypasses sensitivity."
+        )
+
+        devices = pointer_devices()
+        device_text = Gtk.Label(
+            label=(
+                f"{len(devices)} pointer device(s) detected: "
+                + ", ".join(str(item.get("name", "Pointer")) for item in devices[:3])
+                + (" …" if len(devices) > 3 else "")
+            ) if devices else "No pointer device was reported; global input settings will still be applied.",
+            xalign=0,
+        )
+        device_text.add_css_class("input-device-note")
+        device_text.set_wrap(True)
+        mouse.append(device_text)
+
+        self.sensitivity = slider(
+            current["mouse"]["sensitivity"],
+            -1.0,
+            1.0,
+            0.05,
+        )
+
+        self.accel_options = ["Adaptive", "Flat"]
+        self.accel = Gtk.DropDown.new_from_strings(self.accel_options)
+        self.accel.set_selected(
+            1 if current["mouse"]["accel_profile"] == "flat" else 0
+        )
+
+        self.left_handed = Gtk.ToggleButton(label="ON" if current["mouse"]["left_handed"] else "OFF")
+        self.left_handed.add_css_class("input-toggle")
+        self.left_handed.set_active(current["mouse"]["left_handed"])
+        self.left_handed.connect("toggled", self._toggle_label)
+
+        self.natural_scroll = Gtk.ToggleButton(label="ON" if current["mouse"]["natural_scroll"] else "OFF")
+        self.natural_scroll.add_css_class("input-toggle")
+        self.natural_scroll.set_active(current["mouse"]["natural_scroll"])
+        self.natural_scroll.connect("toggled", self._toggle_label)
+
+        mouse.append(setting_row("Pointer speed", self.sensitivity, "-1.00 is slowest, +1.00 is fastest. Changes are verified against the live device state."))
+        mouse.append(setting_row("Acceleration", self.accel))
+        mouse.append(setting_row("Left-handed buttons", self.left_handed))
+        mouse.append(setting_row("Natural scrolling", self.natural_scroll))
+
+        self.mouse_status = Gtk.Label(xalign=0)
+        self.mouse_status.add_css_class("status")
+        mouse.append(action_button("APPLY MOUSE", self.apply_mouse_settings, primary=True))
+        mouse.append(self.mouse_status)
+        self.append(mouse)
+
+    @staticmethod
+    def _toggle_label(button):
+        button.set_label("ON" if button.get_active() else "OFF")
+
+    def apply_keyboard_settings(self, *_):
+        _, layout_code = self.layouts[self.layout.get_selected()]
+        keyboard_values = {
+            "layout": layout_code,
+            "repeat_rate": int(self.repeat_rate.get_value()),
+            "repeat_delay": int(self.repeat_delay.get_value()),
+        }
+        _ok, message = apply_keyboard(keyboard_values)
+        self.keyboard_status.set_text(message)
+
+    def apply_mouse_settings(self, *_):
+        mouse_values = {
+            "sensitivity": round(self.sensitivity.scale.get_value(), 2),
+            "accel_profile": "flat" if self.accel.get_selected() == 1 else "adaptive",
+            "left_handed": self.left_handed.get_active(),
+            "natural_scroll": self.natural_scroll.get_active(),
+        }
+        _ok, message = apply_mouse(mouse_values)
+        self.mouse_status.set_text(message)
+
+
+class TerminalPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "03",
+            "Apps & Keys",
+            "Terminal",
+            "Kitty appearance, including the application side of the liquid glass effect."
+        ))
+
+        current = kitty_load()
+
+        preview = card("// PREVIEW")
+        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        mock.add_css_class("terminal-preview")
+        mock.append(Gtk.Label(label="user@hyprland  ~", xalign=0))
+        mock.append(Gtk.Label(label="❯ yakushi-deck", xalign=0))
+        mock.append(Gtk.Label(label="Desktop control, without replacing the shell.", xalign=0))
+        preview.append(mock)
+        self.append(preview)
+
+        settings = card("// KITTY")
+        self.font_size = spin(current.font_size, 7, 28, 0.5, 1)
+        self.padding = spin(current.padding, 0, 32)
+        self.opacity = slider(current.opacity, 0.25, 1.0, 0.01)
+
+        settings.append(setting_row("Font size", self.font_size))
+        settings.append(setting_row("Window padding", self.padding))
+        settings.append(setting_row(
+            "Background opacity",
+            self.opacity,
+            "Lower values reveal more of the Hyprland blur."
+        ))
+        self.append(settings)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+
+        self.append(action_button("APPLY KITTY SETTINGS", self.apply, primary=True))
+        self.append(self.status)
+
+    def apply(self, *_):
+        value = KittyState(
+            font_size=self.font_size.get_value(),
+            opacity=round(self.opacity.scale.get_value(), 2),
+            padding=int(self.padding.get_value()),
+        )
+        _, message = kitty_save(value)
+        self.status.set_text(message)
+
+
+class RofiPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "03",
+            "Apps & Keys",
+            "Rofi",
+            "Tune the launcher you already use. No replacement theme is generated."
+        ))
+
+        current = rofi_load()
+
+        preview = card("// LAUNCHER PREVIEW")
+        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        mock.add_css_class("rofi-preview")
+
+        search = Gtk.Label(label="   Type to search...", xalign=0)
+        search.add_css_class("rofi-preview-search")
+        mock.append(search)
+
+        for text in ["Firefox", "Kitty", "Files"]:
+            item = Gtk.Label(label=text, xalign=0)
+            item.add_css_class("rofi-preview-item")
+            mock.append(item)
+
+        preview.append(mock)
+        self.append(preview)
+
+        settings = card("// LAUNCHER")
+
+        self.font = Gtk.Entry(text=current.font)
+        self.width = spin(current.width, 400, 1100, 10)
+        self.radius = spin(current.radius, 0, 30)
+        self.padding = spin(current.padding, 8, 50)
+        self.lines = spin(current.lines, 3, 15)
+        self.opacity = slider(current.opacity, 0.20, 1.0, 0.01)
+
+        settings.append(setting_row("Font", self.font))
+        settings.append(setting_row("Window width", self.width))
+        settings.append(setting_row("Corner roundness", self.radius))
+        settings.append(setting_row("Outer padding", self.padding))
+        settings.append(setting_row("Visible results", self.lines))
+        settings.append(setting_row("Background opacity", self.opacity, "Uses real compositor transparency and survives Theme Studio palette changes."))
+        self.append(settings)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+
+        actions = Gtk.Box(spacing=8)
+        actions.append(action_button("APPLY ROFI SETTINGS", self.apply, primary=True))
+        open_button = action_button("OPEN ROFI", self.open_rofi)
+        actions.append(open_button)
+        self.append(actions)
+        self.append(self.status)
+
+    def apply(self, *_):
+        value = RofiState(
+            font=self.font.get_text().strip() or "JetBrainsMono Nerd Font 12",
+            width=int(self.width.get_value()),
+            radius=int(self.radius.get_value()),
+            padding=int(self.padding.get_value()),
+            lines=int(self.lines.get_value()),
+            opacity=round(self.opacity.scale.get_value(), 2),
+        )
+        _, message = rofi_save(value)
+        self.status.set_text(message)
+
+    def open_rofi(self, *_):
+        run(["sh", "-lc", "rofi -show drun >/tmp/yakushi-rofi.log 2>&1 &"], timeout=2)
+        self.status.set_text("Rofi launched.")
+
+
+
+class ModuleChip(Gtk.Box):
+    def __init__(self, owner, module: str, lane: str):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.owner = owner
+        self.module = module
+        self.lane = lane
+        self.add_css_class("module-chip")
+        self.set_tooltip_text(owner.DESCRIPTIONS.get(module, "Waybar module"))
+
+        handle = Gtk.Label(label="⠿")
+        handle.add_css_class("module-handle")
+        handle.set_tooltip_text("Drag to reorder this module.")
+        self.append(handle)
+
+        # Drag starts only from the handle. Clicking the rest of the card is safe.
+        drag = Gtk.DragSource()
+        drag.set_actions(Gdk.DragAction.MOVE)
+        drag.connect("prepare", self._prepare_drag)
+        handle.add_controller(drag)
+
+        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        labels.set_hexpand(True)
+
+        name = Gtk.Label(label=owner.FRIENDLY.get(module, module), xalign=0)
+        name.add_css_class("module-name")
+        name.set_ellipsize(Pango.EllipsizeMode.END)
+        labels.append(name)
+
+        sample = Gtk.Label(label=f'Preview: {owner.preview_text(module)}', xalign=0)
+        sample.add_css_class("module-preview-text")
+        sample.set_ellipsize(Pango.EllipsizeMode.END)
+        labels.append(sample)
+
+        technical = Gtk.Label(label=module, xalign=0)
+        technical.add_css_class("module-id")
+        technical.set_ellipsize(Pango.EllipsizeMode.END)
+        labels.append(technical)
+
+        desc = Gtk.Label(label=owner.DESCRIPTIONS.get(module, "Waybar module"), xalign=0)
+        desc.add_css_class("module-desc")
+        desc.set_ellipsize(Pango.EllipsizeMode.END)
+        desc.set_single_line_mode(True)
+        labels.append(desc)
+
+        self.append(labels)
+
+        # Avoid Gtk.Switch here: some system GTK themes force a huge blue/white
+        # native switch. A ToggleButton gives the deck full visual control.
+        self.enabled = Gtk.ToggleButton()
+        self.enabled.add_css_class("module-toggle")
+        self.enabled.set_active(lane != "Disabled")
+        self._refresh_toggle_label()
+        self.enabled.set_tooltip_text("Enable or disable this Waybar module.")
+        self.enabled.connect("toggled", self._set_enabled)
+        self.append(self.enabled)
+
+        # Drop on a module = insert directly before this module.
+        drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+        drop.connect("drop", self._drop_before)
+        self.add_controller(drop)
+
+    def _refresh_toggle_label(self):
+        self.enabled.set_label("ON" if self.enabled.get_active() else "OFF")
+
+    def _prepare_drag(self, *_args):
+        return Gdk.ContentProvider.new_for_value(self.module)
+
+    def _drop_before(self, _target, value, _x, _y):
+        source = str(value)
+        if not source or source == self.module:
+            return False
+        self.owner.move_module(source, self.lane, before=self.module)
+        return True
+
+    def _set_enabled(self, button):
+        self._refresh_toggle_label()
+        enabled = button.get_active()
+
+        if enabled and self.lane == "Disabled":
+            destination = self.owner.last_active_lane.get(self.module, "Right")
+            GLib.idle_add(self.owner.move_module, self.module, destination)
+        elif not enabled and self.lane != "Disabled":
+            self.owner.last_active_lane[self.module] = self.lane
+            GLib.idle_add(self.owner.move_module, self.module, "Disabled")
+
+
+class ModuleLane(Gtk.Box):
+    def __init__(self, owner, lane_name: str):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        self.owner = owner
+        self.lane_name = lane_name
+        self.add_css_class("module-lane")
+
+        title = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        title.add_css_class("module-lane-header")
+
+        label = Gtk.Label(label=lane_name.upper(), xalign=0)
+        label.add_css_class("module-lane-title")
+        label.set_hexpand(True)
+        title.append(label)
+
+        self.count = Gtk.Label(label="0")
+        self.count.add_css_class("module-lane-count")
+        title.append(self.count)
+
+        self.append(title)
+
+        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.body.set_vexpand(True)
+        self.append(self.body)
+
+        drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+        drop.connect("drop", self._drop_append)
+        self.add_controller(drop)
+
+    def _drop_append(self, _target, value, _x, _y):
+        source = str(value)
+        if not source:
+            return False
+
+        self.owner.move_module(source, self.lane_name)
+        return True
+
+    def rebuild(self, modules):
+        child = self.body.get_first_child()
+        while child:
+            next_child = child.get_next_sibling()
+            self.body.remove(child)
+            child = next_child
+
+        for module in modules:
+            self.body.append(
+                ModuleChip(self.owner, module, self.lane_name)
+            )
+
+        self.count.set_text(str(len(modules)))
+
+        if not modules:
+            empty = Gtk.Label(label="Drop modules here")
+            empty.add_css_class("module-empty")
+            empty.set_vexpand(True)
+            empty.set_valign(Gtk.Align.CENTER)
+            self.body.append(empty)
+
+
+class WaybarPage(Page):
+    FRIENDLY = {
+        "custom/launcher": "Launcher",
+        "hyprland/workspaces": "Workspaces",
+        "hyprland/window": "Active Window",
+        "mpris": "Media",
+        "pulseaudio": "Audio",
+        "memory": "Memory",
+        "cpu": "CPU",
+        "custom/cpu_temp": "CPU Temperature",
+        "custom/gpu_temp": "GPU Temperature",
+        "custom/governor": "CPU Governor",
+        "tray": "System Tray",
+        "clock": "Date",
+        "clock#simpleclock": "Time",
+        "custom/power": "Power",
+    }
+
+    SHORT = {
+        "custom/launcher": "薬",
+        "hyprland/workspaces": "WS",
+        "hyprland/window": "WIN",
+        "mpris": "MUSIC",
+        "pulseaudio": "VOL",
+        "memory": "MEM",
+        "cpu": "CPU",
+        "custom/cpu_temp": "CPU°C",
+        "custom/gpu_temp": "GPU°C",
+        "custom/governor": "GOV",
+        "tray": "TRAY",
+        "clock": "DATE",
+        "clock#simpleclock": "TIME",
+        "custom/power": "⏻",
+    }
+
+    DESCRIPTIONS = {
+        "custom/launcher": "Left click opens Yakushi Control Deck. Right click keeps the application launcher.",
+        "hyprland/workspaces": "Shows and switches workspaces.",
+        "hyprland/window": "Displays the active window title.",
+        "mpris": "Shows media playback information.",
+        "pulseaudio": "Volume indicator and click target for audio settings.",
+        "memory": "Current RAM usage.",
+        "cpu": "Current CPU load.",
+        "custom/cpu_temp": "CPU temperature sensor output.",
+        "custom/gpu_temp": "GPU temperature sensor output.",
+        "custom/governor": "CPU governor indicator and switch action.",
+        "tray": "System tray area for background applications.",
+        "clock": "Date and calendar popover.",
+        "clock#simpleclock": "Simple time display.",
+        "custom/power": "Launches your power menu.",
+    }
+
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "02",
+            "Desktop",
+            "Bar Studio",
+            "Drag modules where you want them. Drop them into Disabled to hide them."
+        ))
+
+        current = waybar_load()
+        self.current = current
+
+        preview_card = card(
+            "// LIVE PREVIEW",
+            "A miniature waybar layout so you can see what LEFT, CENTER, and RIGHT currently mean."
+        )
+        self.preview = WaybarMiniPreview(self)
+        preview_card.append(self.preview)
+        self.append(preview_card)
+
+        look = card("// BAR GEOMETRY")
+
+        self.height = spin(current.height, 24, 60)
+        self.margin_top = spin(current.margin_top, 0, 30)
+        self.margin_side = spin(current.margin_left, 0, 40)
+        self.spacing = spin(current.spacing, 0, 14)
+        self.font_size = spin(current.font_size, 9, 20)
+        self.radius = spin(current.radius, 0, 24)
+        self.padding = spin(current.padding, 2, 24)
+        self.opacity = slider(current.opacity, 0.15, 1.0, 0.01)
+
+        look.append(setting_row("Bar height", self.height))
+        look.append(setting_row("Top margin", self.margin_top))
+        look.append(setting_row("Side margins", self.margin_side))
+        look.append(setting_row("Module spacing", self.spacing))
+        look.append(setting_row("Font size", self.font_size))
+        look.append(setting_row("Module roundness", self.radius))
+        look.append(setting_row("Module padding", self.padding))
+        look.append(setting_row("Module opacity", self.opacity))
+        self.append(look)
+
+        modules_card = card(
+            "// MODULE LAYOUT",
+            "Grab the handle, drag onto another module to place it before that module, or drop into a lane to append it."
+        )
+
+        self.module_state = {
+            "Left": list(current.left),
+            "Center": list(current.center),
+            "Right": list(current.right),
+            "Disabled": [],
+        }
+        self.last_active_lane = {}
+
+        layout = Gtk.Grid(column_spacing=9, row_spacing=9)
+        layout.set_column_homogeneous(True)
+
+        self.lanes = {}
+        for index, lane_name in enumerate(("Left", "Center", "Right")):
+            lane = ModuleLane(self, lane_name)
+            lane.set_size_request(-1, 260)
+            layout.attach(lane, index, 0, 1, 1)
+            self.lanes[lane_name] = lane
+
+        disabled = ModuleLane(self, "Disabled")
+        disabled.set_size_request(-1, 125)
+        layout.attach(disabled, 0, 1, 3, 1)
+        self.lanes["Disabled"] = disabled
+
+        modules_card.append(layout)
+        self.append(modules_card)
+
+        help_card = card(
+            "// HOW TO USE IT",
+            "Example: drag CPU onto Memory to place CPU before Memory. Use the switch on a module to disable it without deleting its configuration. The preview updates immediately."
+        )
+        self.append(help_card)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+
+        self.append(
+            action_button(
+                "APPLY WAYBAR SETTINGS",
+                self.apply,
+                primary=True,
+            )
+        )
+        self.append(self.status)
+
+        self.rebuild_lanes()
+
+    def short_label(self, module: str) -> str:
+        return self.SHORT.get(module, self.FRIENDLY.get(module, module))
+
+    def preview_text(self, module: str) -> str:
+        return WaybarMiniPreview.SAMPLE.get(module, self.short_label(module))
+
+    def rebuild_lanes(self):
+        for lane_name, lane in self.lanes.items():
+            lane.rebuild(self.module_state[lane_name])
+        self.preview.rebuild()
+
+    def move_module(self, module: str, destination: str, before: str | None = None):
+        for lane_name, modules in self.module_state.items():
+            if module in modules:
+                modules.remove(module)
+                break
+
+        if destination not in self.module_state:
+            return
+
+        if destination != "Disabled":
+            self.last_active_lane[module] = destination
+
+        target = self.module_state[destination]
+
+        if before and before in target:
+            target.insert(target.index(before), module)
+        else:
+            target.append(module)
+
+        self.rebuild_lanes()
+
+    def apply(self, *_):
+        value = WaybarState(
+            height=int(self.height.get_value()),
+            margin_top=int(self.margin_top.get_value()),
+            margin_left=int(self.margin_side.get_value()),
+            margin_right=int(self.margin_side.get_value()),
+            spacing=int(self.spacing.get_value()),
+            font_size=int(self.font_size.get_value()),
+            radius=int(self.radius.get_value()),
+            padding=int(self.padding.get_value()),
+            opacity=round(self.opacity.scale.get_value(), 2),
+            left=list(self.module_state["Left"]),
+            center=list(self.module_state["Center"]),
+            right=list(self.module_state["Right"]),
+        )
+
+        _, message = waybar_save(value)
+        self.status.set_text(message)

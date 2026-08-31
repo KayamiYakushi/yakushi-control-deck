@@ -1,0 +1,29 @@
+@import "../hypr/colors.css";
+* { border: none; border-radius: 8px; font-family: "JetBrainsMono Nerd Font", monospace; font-size: 13px; min-height: 0; }
+window#waybar { background-color: transparent; color: @fg; }
+#custom-launcher,
+#custom-cpu_temp,
+#custom-gpu_temp,
+#custom-governor,
+#custom-power,
+#workspaces,
+#window,
+#clock,
+#cpu,
+#memory,
+#pulseaudio,
+#mpris,
+#tray {
+    background-color: alpha(@surface, 0.90);
+    color: @fg;
+    border: 1px solid @border;
+    border-radius: 10px;
+    padding: 2px 10px;
+    margin: 4px 2px;
+}
+#workspaces { padding: 2px 4px; }
+#workspaces button { padding: 0 8px; color: @fg; border-radius: 6px; background-color: transparent; }
+#workspaces button.active { background-color: @accent; color: @selected_fg; }
+#workspaces button:hover { background-color: @hover_bg; color: @selected_fg; }
+#custom-launcher, #custom-power { font-weight: 800; }
+#custom-power { color: @accent; }
