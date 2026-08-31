@@ -1,0 +1,5 @@
+/* Generated/managed by Yakushi Control Deck. */
+window {
+    transparency: "real";
+    background-color: rgba(14, 12, 13, 90%);
+}

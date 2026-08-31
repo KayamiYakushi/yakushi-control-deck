@@ -11,6 +11,7 @@ A lightweight GTK4 control deck and matching Waybar/Rofi setup for **Arch Linux 
 - Keyboard and mouse controls with live Hyprland verification.
 - Balanced / Performance power management.
 - Tonal Theme Studio, desktop typography, wallpapers, Kitty and Rofi appearance.
+- Matching Hyprlock lock screen and Yakushi SDDM boot login theme.
 - Waybar drag-and-drop module ordering and enable/disable controls.
 - `REVERT LAST` history and automatic install backups.
 
@@ -99,3 +100,41 @@ When missing, the installer installs these from official Arch repositories: Pyth
 ## License
 
 MIT
+
+
+### Rofi transparency
+
+Rofi opacity is stored in `~/.config/rofi/yakushi-opacity.rasi` and imported last, so earlier theme rules cannot shadow the slider.
+
+
+## Lock & Login
+
+Yakushi 1.1 adds two session pages:
+
+- **Lock Screen** manages a generated Hyprlock configuration with wallpaper, blur, backdrop brightness, 12/24-hour clock, and date visibility.
+- **Login Screen** ships a real Qt6 `yakushi` SDDM theme. Its layout intentionally mirrors Hyprlock and synchronizes the Lock Screen wallpaper, clock/date preference, darkness/blur intent, Theme Studio palette, and desktop typography when staged.
+- **PREVIEW SDDM** uses SDDM test mode without ending the current session.
+- **INSTALL / UPDATE SDDM** first uses Polkit. If the desktop Polkit prompt fails, Yakushi automatically opens a Kitty terminal and falls back to normal `sudo` authentication. The installer copies the theme to `/usr/share/sddm/themes/yakushi`, activates it, and verifies both the theme files and active configuration.
+- **DISABLE YAKUSHI SDDM** restores the previous `/etc/sddm.conf` theme selection when Yakushi had to patch it.
+
+SDDM remains the real boot login manager; Hyprlock remains the in-session lock screen. SDDM is optional and Yakushi does not replace a different display manager automatically.
+
+### Optional Super+M lock shortcut
+
+To make `Super+M` lock the current Hyprland session with Hyprlock instead of logging out:
+
+```fish
+./bind-super-m-lock.fish
+```
+
+The helper supports both modern Hyprland Lua config and legacy `hyprland.conf`, creates a timestamped backup, reloads Hyprland, checks for new config errors, and verifies the resulting `Yakushi Lock Screen` bind. Logout remains available from the Rofi power menu.
+
+### SDDM terminal install / recovery
+
+If your Polkit setup rejects the graphical authorization prompt, run:
+
+```bash
+./install-sddm-theme.sh
+```
+
+Enter your normal Linux `sudo` password. The script refuses to report success unless `/usr/share/sddm/themes/yakushi/Main.qml` exists and SDDM resolves `Current=yakushi`. Log out normally or reboot afterward; do not restart SDDM from inside an active Hyprland session.

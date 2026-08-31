@@ -8,6 +8,17 @@ from gi.repository import Gtk, Gdk, GObject, GLib, Pango
 
 from ..core.io import run
 from ..core.power import apply_mode as apply_power_mode, status as power_status
+from ..core.lockscreen import (
+    LockSettings,
+    SddmSettings,
+    apply_lock,
+    disable_sddm,
+    install_sddm,
+    lock_now,
+    lock_status,
+    preview_sddm,
+    sddm_status,
+)
 
 from ..core.apps import (
     KittyState,
@@ -1619,6 +1630,221 @@ class InputPage(Page):
         }
         _ok, message = apply_mouse(mouse_values)
         self.mouse_status.set_text(message)
+
+
+class WallpaperSelector(Gtk.Box):
+    def __init__(self, initial: str = "", on_change=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=9)
+        self.path = Path(initial).expanduser() if initial else current_wallpaper()
+        self.on_change = on_change
+
+        self.preview = Gtk.Picture()
+        self.preview.set_content_fit(Gtk.ContentFit.COVER)
+        self.preview.set_can_shrink(True)
+        self.preview.set_size_request(-1, 180)
+        self.preview.add_css_class("session-wallpaper-preview")
+        self.append(self.preview)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.label = Gtk.Label(xalign=0)
+        self.label.set_hexpand(True)
+        self.label.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+        self.label.add_css_class("muted")
+        row.append(self.label)
+        row.append(action_button("USE DESKTOP", self._desktop))
+        row.append(action_button("BROWSE", self._browse))
+        self.append(row)
+        self._refresh()
+
+    def value(self) -> str:
+        return str(self.path) if self.path and self.path.exists() else ""
+
+    def _set(self, path: Path | None):
+        if path and path.exists():
+            self.path = path
+            self._refresh()
+            if self.on_change:
+                self.on_change(path)
+
+    def _refresh(self):
+        if self.path and self.path.exists():
+            self.preview.set_filename(str(self.path))
+            self.label.set_text(str(self.path))
+        else:
+            self.preview.set_paintable(None)
+            self.label.set_text("No wallpaper selected — theme background color will be used.")
+
+    def _desktop(self, *_):
+        self._set(current_wallpaper())
+
+    def _browse(self, *_):
+        chooser = Gtk.FileChooserNative(
+            title="Choose wallpaper",
+            action=Gtk.FileChooserAction.OPEN,
+            accept_label="Use wallpaper",
+            cancel_label="Cancel",
+        )
+        filt = Gtk.FileFilter()
+        filt.set_name("Images")
+        for mime in ("image/png", "image/jpeg", "image/webp"):
+            filt.add_mime_type(mime)
+        chooser.add_filter(filt)
+
+        def response(dialog, result):
+            if result == Gtk.ResponseType.ACCEPT:
+                file = dialog.get_file()
+                if file:
+                    path = file.get_path()
+                    if path:
+                        self._set(Path(path))
+            dialog.destroy()
+
+        chooser.connect("response", response)
+        chooser.show()
+
+
+class LockPage(Page):
+    def __init__(self):
+        super().__init__()
+        info = lock_status()
+        self.append(page_header(
+            "04", "Session", "Lock Screen",
+            "Build a Hyprlock screen that follows your Yakushi palette, wallpaper, and typography."
+        ))
+
+        state_card = card("// HYPRLOCK", "Yakushi writes the standard ~/.config/hypr/hyprlock.conf file and keeps it in REVERT history.")
+        availability = Gtk.Label(
+            label="HYPRLOCK DETECTED" if info.get("available") else "HYPRLOCK NOT AVAILABLE",
+            xalign=0,
+        )
+        availability.add_css_class("status")
+        state_card.append(availability)
+        self.append(state_card)
+
+        wall = card("// LOCK WALLPAPER", "Use the current desktop wallpaper or choose a separate image for the lock screen.")
+        self.wallpaper = WallpaperSelector(info.get("wallpaper", ""))
+        wall.append(self.wallpaper)
+        self.append(wall)
+
+        look = card("// BACKDROP")
+        self.blur_passes = spin(int(info.get("blur_passes", 3)), 0, 8)
+        self.blur_size = spin(int(info.get("blur_size", 8)), 1, 20)
+        self.brightness = slider(float(info.get("brightness", 0.72)), 0.25, 1.0, 0.01)
+        look.append(setting_row("Blur passes", self.blur_passes, "0 disables blur; 2–4 is usually enough."))
+        look.append(setting_row("Blur size", self.blur_size))
+        look.append(setting_row("Background brightness", self.brightness, "Lower values create a darker, calmer lock screen."))
+        self.append(look)
+
+        clock = card("// CLOCK & DATE")
+        self.clock_24h = Gtk.CheckButton(label="24-hour clock")
+        self.clock_24h.set_active(bool(info.get("clock_24h", True)))
+        self.show_date = Gtk.CheckButton(label="Show date")
+        self.show_date.set_active(bool(info.get("show_date", True)))
+        clock.append(self.clock_24h)
+        clock.append(self.show_date)
+        self.append(clock)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+        actions = Gtk.Box(spacing=8)
+        actions.append(action_button("APPLY LOCK SCREEN", self.apply, primary=True))
+        actions.append(action_button("LOCK NOW", self.test))
+        self.append(actions)
+        self.append(self.status)
+
+    def settings(self):
+        return LockSettings(
+            wallpaper=self.wallpaper.value(),
+            blur_passes=int(self.blur_passes.get_value()),
+            blur_size=int(self.blur_size.get_value()),
+            brightness=round(self.brightness.scale.get_value(), 2),
+            clock_24h=self.clock_24h.get_active(),
+            show_date=self.show_date.get_active(),
+        )
+
+    def apply(self, *_):
+        _ok, message = apply_lock(self.settings())
+        self.status.set_text(message)
+
+    def test(self, *_):
+        ok, message = apply_lock(self.settings())
+        if not ok:
+            self.status.set_text(message)
+            return
+        _ok, message = lock_now()
+        self.status.set_text(message)
+
+
+class LoginPage(Page):
+    def __init__(self):
+        super().__init__()
+        info = sddm_status()
+        self.append(page_header(
+            "04", "Session", "Login Screen",
+            "Make SDDM visually match the Yakushi Hyprlock screen while keeping SDDM as the real boot login manager."
+        ))
+
+        status_card = card("// SDDM STATUS", "Installing the theme needs one Polkit authorization because SDDM themes live under /usr/share/sddm. Yakushi verifies both the theme files and active SDDM configuration after installation.")
+        text = "SDDM detected" if info.get("available") else "SDDM is not installed"
+        active = info.get("active_theme") or "embedded/default"
+        state = "ACTIVE" if info.get("active") else ("INSTALLED" if info.get("installed") else "NOT INSTALLED")
+        label = Gtk.Label(label=f"{text}  //  YAKUSHI: {state}  //  ACTIVE: {active}", xalign=0)
+        label.add_css_class("monitor-summary")
+        status_card.append(label)
+        self.append(status_card)
+
+        preview_card = card("// YAKUSHI GREETER", "The login theme mirrors Lock Screen Studio: wallpaper, clock/date preference, darkness, blur intent, Theme Studio palette, and desktop serif typography.")
+        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        mock.add_css_class("sddm-preview-card")
+        mark = Gtk.Label(label="薬")
+        mark.add_css_class("sddm-preview-symbol")
+        mock.append(mark)
+        title = Gtk.Label(label="YAKUSHI // LOGIN")
+        title.add_css_class("meta")
+        mock.append(title)
+        time = Gtk.Label(label="21:45")
+        time.add_css_class("sddm-preview-time")
+        mock.append(time)
+        field = Gtk.Label(label="••••••••")
+        field.add_css_class("sddm-preview-field")
+        mock.append(field)
+        preview_card.append(mock)
+        self.append(preview_card)
+
+        wall = card("// LOGIN WALLPAPER", "Defaults to the Lock Screen wallpaper. Choose a different image only if you want boot login and Hyprlock to diverge. Yakushi copies it into the system theme so SDDM can always read it.")
+        self.wallpaper = WallpaperSelector(info.get("wallpaper", ""))
+        wall.append(self.wallpaper)
+        self.append(wall)
+
+        safety = card(
+            "// SAFE APPLY",
+            "Yakushi installs its own theme directory and a dedicated SDDM config override. If /etc/sddm.conf already controls the theme, its original copy is preserved for Disable/Restore."
+        )
+        self.append(safety)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+        actions = Gtk.Box(spacing=8)
+        actions.append(action_button("PREVIEW SDDM", self.preview))
+        actions.append(action_button("INSTALL / UPDATE SDDM", self.install, primary=True))
+        actions.append(action_button("DISABLE YAKUSHI SDDM", self.disable))
+        self.append(actions)
+        self.append(self.status)
+
+    def settings(self):
+        return SddmSettings(wallpaper=self.wallpaper.value(), sync_palette=True)
+
+    def preview(self, *_):
+        _ok, message = preview_sddm(self.settings())
+        self.status.set_text(message)
+
+    def install(self, *_):
+        _ok, message = install_sddm(self.settings())
+        self.status.set_text(message)
+
+    def disable(self, *_):
+        _ok, message = disable_sddm()
+        self.status.set_text(message)
 
 
 class TerminalPage(Page):

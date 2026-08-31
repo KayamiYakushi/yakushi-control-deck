@@ -16,6 +16,8 @@ from .ui.pages import (
     DisplaysPage,
     InputPage,
     PowerPage,
+    LockPage,
+    LoginPage,
     RofiPage,
     TerminalPage,
     ThemePage,
@@ -135,6 +137,14 @@ class Window(Gtk.ApplicationWindow):
                 [
                     ("terminal", "Terminal", "端末", TerminalPage),
                     ("rofi", "Rofi", "起動", RofiPage),
+                ],
+            ),
+            (
+                "04",
+                "SESSION",
+                [
+                    ("lock", "Lock Screen", "施錠", LockPage),
+                    ("login", "Login Screen", "ログイン", LoginPage),
                 ],
             ),
         ]
@@ -977,6 +987,60 @@ def main():
 
         spinbutton button label {
             color: #c7bfbb;
+        }
+
+        .session-wallpaper-preview {
+            background: #070809;
+            border: 1px solid #302d30;
+            border-radius: 4px;
+        }
+
+        .sddm-preview-card {
+            min-height: 250px;
+            background: #090a0b;
+            border: 1px solid #3f292a;
+            padding: 28px;
+        }
+
+        .sddm-preview-symbol {
+            color: #e8a29a;
+            font-size: 34px;
+            font-weight: 800;
+        }
+
+        .sddm-preview-time {
+            color: #e8a29a;
+            font-family: serif;
+            font-size: 48px;
+            font-weight: 700;
+        }
+
+        .sddm-preview-field {
+            color: #8e7370;
+            background: #1a1414;
+            border: 1px solid #3f292a;
+            border-radius: 4px;
+            padding: 12px 18px;
+        }
+
+        checkbutton {
+            color: #b9b0ac;
+            padding: 5px 0;
+        }
+
+        checkbutton check {
+            background: #090b0c;
+            background-image: none;
+            border: 1px solid #3a3437;
+            border-radius: 3px;
+            min-width: 16px;
+            min-height: 16px;
+        }
+
+        checkbutton check:checked {
+            background: #a74a58;
+            background-image: none;
+            border-color: #c96573;
         }
 
         .barcode-button {
