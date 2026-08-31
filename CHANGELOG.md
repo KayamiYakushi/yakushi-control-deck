@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.5
+- Fixed `doctor.sh` false failures for Waybar JSONC files and fresh-clone SDDM bundle detection.
+- Added a standard-library JSONC validator supporting comments and trailing commas.
+- Installer now runs a package-integrity preflight before modifying desktop files.
+- Installer validates Waybar with JSONC rules instead of strict JSON.
+- Added `./smoke-test.sh` for non-destructive fresh-clone/release validation.
+- Installed app now keeps diagnostics, SDDM recovery, lock-bind helper, restore helper, and JSONC tooling under `~/.local/share/yakushi-control-deck`.
+- Added terminal `sudo` fallback when disabling/restoring the Yakushi SDDM theme if Polkit fails.
+
 ## 1.1.4
 - Fixed SDDM installation on systems where Polkit/pkexec authentication fails even though normal `sudo` works.
 - `INSTALL / UPDATE SDDM` now falls back to a visible Kitty sudo installer instead of silently leaving the stock SDDM theme active.

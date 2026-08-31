@@ -1,23 +1,41 @@
 # Publishing Yakushi Control Deck to GitHub
 
-1. On GitHub, create a new **Public** repository named `yakushi-control-deck`.
-2. Do not initialize it with a README, `.gitignore`, or license; this project already contains them.
-3. In the extracted project directory, run:
+The public repository is:
 
-```fish
-git init -b main
-git add .
-git commit -m "Release Yakushi Control Deck v1.0.0"
-git remote add origin https://github.com/KayamiYakushi/yakushi-control-deck.git
-git push -u origin main
-git tag -a v1.0.0 -m "Yakushi Control Deck v1.0.0"
-git push origin v1.0.0
+```text
+https://github.com/KayamiYakushi/yakushi-control-deck
 ```
 
-After the push, GitHub users can install with:
+## Normal release workflow
+
+Before publishing a release, run the non-destructive package check:
+
+```bash
+./smoke-test.sh
+```
+
+Then commit the prepared release on `main`, push it, create an annotated version tag, and push the tag. Replace `<version>` with the release version, for example `v1.1.5`:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git add -A
+git commit -m "Release <version>"
+git push origin main
+git tag -a <version> -m "Yakushi Control Deck <version>"
+git push origin <version>
+```
+
+Create a GitHub Release from that existing tag and attach the matching `.tar.gz` and `.zip` archives.
+
+## Fresh-user install
 
 ```bash
 git clone https://github.com/KayamiYakushi/yakushi-control-deck.git
 cd yakushi-control-deck
+./smoke-test.sh
 ./install.sh
+./doctor.sh
 ```
+
+Fish users may use `./install.fish` instead of `./install.sh`.

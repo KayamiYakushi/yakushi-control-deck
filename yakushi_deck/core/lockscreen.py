@@ -371,11 +371,33 @@ def install_sddm(settings: SddmSettings) -> tuple[bool, str]:
     return False, "SDDM needs administrator access. Run ./install-sddm-theme.sh from the Yakushi repository."
 
 
+def _launch_sddm_sudo_disable(helper: Path) -> bool:
+    terminal = shutil.which("kitty")
+    if not terminal or shutil.which("sudo") is None:
+        return False
+    command = (
+        f"sudo /usr/bin/python3 {shlex.quote(str(helper))} disable; "
+        "status=$?; echo; "
+        "if [ $status -eq 0 ]; then "
+        "echo 'Yakushi SDDM disabled. Log out or reboot when convenient.'; "
+        "else echo 'Yakushi SDDM restore failed.'; fi; "
+        "echo; read -r -p 'Press Enter to close...' _; exit $status"
+    )
+    proc = run([terminal, "--title", "Yakushi SDDM Restore", "sh", "-lc", command], timeout=2.0)
+    return proc.returncode == 0
+
+
 def disable_sddm() -> tuple[bool, str]:
-    if shutil.which("pkexec") is None:
-        return False, "Polkit/pkexec is required."
     helper = _sddm_root_helper()
-    proc = run(["pkexec", "/usr/bin/python3", str(helper), "disable"], timeout=120.0)
-    if proc.returncode != 0:
-        return False, (proc.stderr or proc.stdout).strip() or "SDDM restore failed."
-    return True, "Yakushi SDDM disabled. Your previous SDDM configuration was restored."
+    if not helper.exists():
+        return False, "SDDM privilege helper is missing."
+
+    if shutil.which("pkexec") is not None:
+        proc = run(["pkexec", "/usr/bin/python3", str(helper), "disable"], timeout=120.0)
+        if proc.returncode == 0:
+            return True, "Yakushi SDDM disabled. Your previous SDDM configuration was restored."
+
+    if _launch_sddm_sudo_disable(helper):
+        return True, "Polkit could not complete the restore, so Yakushi opened a sudo restore terminal."
+
+    return False, "SDDM restore needs administrator access."

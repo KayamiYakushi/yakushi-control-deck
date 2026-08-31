@@ -53,11 +53,25 @@ yakushi-deck
 
 If your shell does not include `~/.local/bin` in `PATH`, use `~/.local/bin/yakushi-deck`. The bundled Waybar uses the absolute path and is unaffected.
 
+## Pre-install / release smoke test
+
+Before installing, a fresh clone or extracted release can be checked without changing system files:
+
+```bash
+./smoke-test.sh
+```
+
+The installer runs the same package-integrity preflight automatically before it backs up or replaces desktop files.
+
 ## Diagnostics
+
+After installation:
 
 ```bash
 ./doctor.sh
 ```
+
+The installed copy also keeps the maintenance helpers under `~/.local/share/yakushi-control-deck/`, so diagnostics and SDDM recovery remain available even if the original clone is removed.
 
 ## Update
 

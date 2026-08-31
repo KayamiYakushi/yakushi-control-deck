@@ -9,13 +9,18 @@ command -v sudo >/dev/null 2>&1 || fail 'sudo is required.'
 PACKAGES=(python python-gobject gtk4 hyprland waybar rofi kitty hyprpaper hyprlock pavucontrol playerctl brightnessctl wl-clipboard ttf-jetbrains-mono-nerd polkit)
 missing=(); for package in "${PACKAGES[@]}"; do pacman -Qi "$package" >/dev/null 2>&1 || missing+=("$package"); done
 if ((${#missing[@]})); then say 'Installing official Arch packages:'; printf '  %s\n' "${missing[@]}"; sudo pacman -S --needed "${missing[@]}"; fi
+
+# Validate the release bundle before touching the user's desktop files.
+[[ -x "$ROOT/smoke-test.sh" ]] || fail 'Package smoke-test helper is missing.'
+"$ROOT/smoke-test.sh" --quiet || fail 'Package integrity check failed. Run ./smoke-test.sh for details.'
 mkdir -p "$BACKUP" "$BIN" "$DATA"
 backup_file(){ local src="$1" rel="$2"; [[ -e "$src" ]] || return 0; mkdir -p "$BACKUP/$(dirname "$rel")"; cp -a "$src" "$BACKUP/$rel"; }
 backup_file "$HOME/.config/waybar/config.jsonc" waybar/config.jsonc; backup_file "$HOME/.config/waybar/style.css" waybar/style.css; backup_file "$HOME/.config/waybar/scripts" waybar/scripts
 backup_file "$HOME/.config/rofi/config.rasi" rofi/config.rasi; backup_file "$HOME/.config/rofi/yakushi-opacity.rasi" rofi/yakushi-opacity.rasi; backup_file "$HOME/.config/rofi/scripts" rofi/scripts
 backup_file "$HOME/.config/hypr/colors.css" hypr/colors.css; backup_file "$HOME/.config/hypr/colors.rasi" hypr/colors.rasi; backup_file "$HOME/.config/kitty/kitty.conf" kitty/kitty.conf
 rm -rf "$TARGET"; mkdir -p "$TARGET" "$HOME/.config/waybar/scripts" "$HOME/.config/rofi/scripts" "$HOME/.config/hypr" "$HOME/.config/kitty" "$HOME/.local/share/applications"
-cp -a "$ROOT/yakushi_deck" "$TARGET/"; cp -a "$ROOT/integrations" "$TARGET/"; cp -a "$ROOT/README.md" "$ROOT/LICENSE" "$TARGET/"
+cp -a "$ROOT/yakushi_deck" "$TARGET/"; cp -a "$ROOT/integrations" "$TARGET/"; cp -a "$ROOT/tools" "$TARGET/"
+cp -a "$ROOT/README.md" "$ROOT/LICENSE" "$ROOT/doctor.sh" "$ROOT/smoke-test.sh" "$ROOT/install-sddm-theme.sh" "$ROOT/bind-super-m-lock.fish" "$ROOT/restore-last-install.sh" "$ROOT/uninstall.sh" "$TARGET/"
 cp -a "$ROOT/integrations/waybar/config.jsonc" "$HOME/.config/waybar/config.jsonc"; cp -a "$ROOT/integrations/waybar/style.css" "$HOME/.config/waybar/style.css"; cp -a "$ROOT/integrations/waybar/scripts/." "$HOME/.config/waybar/scripts/"
 cp -a "$ROOT/integrations/rofi/config.rasi" "$HOME/.config/rofi/config.rasi"; cp -a "$ROOT/integrations/rofi/yakushi-opacity.rasi" "$HOME/.config/rofi/yakushi-opacity.rasi"; cp -a "$ROOT/integrations/rofi/scripts/." "$HOME/.config/rofi/scripts/"
 cp -a "$ROOT/integrations/hypr/colors.css" "$HOME/.config/hypr/colors.css"; cp -a "$ROOT/integrations/hypr/colors.rasi" "$HOME/.config/hypr/colors.rasi"
@@ -44,8 +49,8 @@ Categories=Settings;System;
 Terminal=false
 DESKTOP
 python3 -m compileall -q "$TARGET/yakushi_deck"
-python3 -c 'import json, pathlib; json.load(open(pathlib.Path.home()/".config/waybar/config.jsonc"))'
+python3 "$TARGET/tools/jsonc_check.py" "$HOME/.config/waybar/config.jsonc"
 rofi -no-config -theme "$HOME/.config/rofi/config.rasi" -dump-theme >/dev/null
 pkill -x waybar 2>/dev/null || true; nohup waybar >/tmp/yakushi-waybar.log 2>&1 &
-printf '{"version":"1.1.4","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
-say ''; say '薬  Yakushi Control Deck 1.1.4 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
+printf '{"version":"1.1.5","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
+say ''; say '薬  Yakushi Control Deck 1.1.5 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
