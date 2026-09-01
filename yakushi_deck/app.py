@@ -18,6 +18,7 @@ from .ui.pages import (
     PowerPage,
     LockPage,
     LoginPage,
+    NautilusPage,
     RofiPage,
     TerminalPage,
     ThemePage,
@@ -136,6 +137,7 @@ class Window(Gtk.ApplicationWindow):
                 "APPS & KEYS",
                 [
                     ("terminal", "Terminal", "端末", TerminalPage),
+                    ("nautilus", "Nautilus", "書類", NautilusPage),
                     ("rofi", "Rofi", "起動", RofiPage),
                 ],
             ),
@@ -252,16 +254,21 @@ class Window(Gtk.ApplicationWindow):
 
         main.append(utility)
 
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_hexpand(True)
-        scroll.set_vexpand(True)
-        scroll.set_child(self.stack)
-        main.append(scroll)
+        self.content_scroll = Gtk.ScrolledWindow()
+        self.content_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.content_scroll.set_hexpand(True)
+        self.content_scroll.set_vexpand(True)
+        self.content_scroll.set_child(self.stack)
+        main.append(self.content_scroll)
 
     def revert_last(self, *_):
         _ok, message = revert_latest()
         self.revert_status.set_text(message)
+
+    def _scroll_content_to_top(self):
+        adjustment = self.content_scroll.get_vadjustment()
+        adjustment.set_value(adjustment.get_lower())
+        return GLib.SOURCE_REMOVE
 
     def navigate(self, button, page_id):
         for item in self.nav_items:
@@ -269,6 +276,12 @@ class Window(Gtk.ApplicationWindow):
 
         button.add_css_class("selected")
         self.stack.set_visible_child_name(page_id)
+
+        # The main ScrolledWindow wraps the whole Gtk.Stack, so without an
+        # explicit reset its vertical adjustment carries over to the next
+        # page. Reset after the child switch has been queued so every section
+        # opens from its header instead of inheriting the previous page scroll.
+        GLib.idle_add(self._scroll_content_to_top)
 
     def filter_navigation(self, entry):
         query = entry.get_text().strip().lower()

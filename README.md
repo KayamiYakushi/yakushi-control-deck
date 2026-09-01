@@ -10,9 +10,10 @@ A lightweight GTK4 control deck and matching Waybar/Rofi setup for **Arch Linux 
 - Display layout, refresh rate, scale and position controls.
 - Keyboard and mouse controls with live Hyprland verification.
 - Balanced / Performance power management.
-- Tonal Theme Studio, desktop typography, wallpapers, Kitty and Rofi appearance.
+- Tonal Theme Studio, **wallpaper-driven Auto Color (Dark/Light)**, desktop typography, wallpapers, Kitty and Rofi appearance.
 - Matching Hyprlock lock screen and Yakushi SDDM boot login theme.
 - Waybar drag-and-drop module ordering and enable/disable controls.
+- **Nautilus Studio** with reversible Hyprland-level window opacity control.
 - `REVERT LAST` history and automatic install backups.
 
 ## Bundled Waybar + Rofi
@@ -97,11 +98,11 @@ Uninstall intentionally leaves the active desktop configs in place. Pre-install 
 
 ## Wallpaper sources
 
-The wallpaper page indexes both `~/Pictures` and `~/Documents`. The public installer includes `hyprpaper`; Yakushi starts it on demand if it is installed but not yet running. `swww` and `awww` are also supported when already present.
+The wallpaper page indexes both `~/Documents` and `~/Pictures`; `~/Documents` is selected by default and root filters include nested subfolders. The public installer includes `hyprpaper`; Yakushi starts it on demand if it is installed but not yet running. `swww` and `awww` are also supported when already present.
 
 ## Packages
 
-When missing, the installer installs these from official Arch repositories: Python, PyGObject, GTK4, Hyprland, Waybar, Rofi, Kitty, hyprpaper, hyprlock, pavucontrol, playerctl, brightnessctl, wl-clipboard, JetBrains Mono Nerd Font and Polkit.
+When missing, the installer installs these from official Arch repositories: Python, PyGObject, GTK4, GdkPixbuf, Hyprland, Waybar, Rofi, Kitty, hyprpaper, hyprlock, pavucontrol, playerctl, brightnessctl, wl-clipboard, JetBrains Mono Nerd Font and Polkit.
 
 ## Troubleshooting
 
@@ -152,3 +153,27 @@ If your Polkit setup rejects the graphical authorization prompt, run:
 ```
 
 Enter your normal Linux `sudo` password. The script refuses to report success unless `/usr/share/sddm/themes/yakushi/Main.qml` exists and SDDM resolves `Current=yakushi`. Log out normally or reboot afterward; do not restart SDDM from inside an active Hyprland session.
+## Auto Color Theme
+
+Theme Studio now includes **Auto Color Theme**. It samples the current wallpaper without an AUR helper or external color generator and builds all nine Yakushi tonal roles (accent, background, surfaces, foreground, muted text, border, hover and selected text).
+
+- **DARK** creates deep wallpaper-tinted surfaces with a readable accent/foreground pair.
+- **LIGHT** creates a paper-like palette with dark text and wallpaper-derived accents.
+- **FOLLOW WALLPAPER** automatically regenerates the palette whenever a wallpaper is applied from Yakushi's Wallpaper page.
+- `GENERATE + APPLY NOW` is available for one-shot recoloring without enabling follow mode.
+- Rofi's separately configured opacity is preserved while its RGB background follows the new palette.
+- Auto Color requests the matching GNOME/libadwaita dark/light preference when the schema is available, which helps Nautilus match the chosen mode.
+
+Auto Color follows wallpapers applied through Yakushi. External wallpaper daemons that change images without updating Yakushi state are intentionally not polled in the background.
+
+## Nautilus Studio
+
+The **03 // APPS & KEYS → Nautilus** page adds a 30–100% opacity slider. Yakushi does not patch Nautilus or libadwaita CSS; it writes one clearly marked Hyprland window rule instead. This makes the feature independent of Nautilus theme internals and keeps it reversible.
+
+- Modern Hyprland uses a named `hl.window_rule(...)` Lua rule.
+- Legacy Hyprland uses a managed `windowrulev2` block.
+- The main Hyprland config is backed up before changes.
+- A new config error triggers an automatic rollback.
+- Setting opacity to **100%** removes the managed rule.
+- Nautilus itself remains optional; Yakushi does not install it automatically just to expose this integration.
+

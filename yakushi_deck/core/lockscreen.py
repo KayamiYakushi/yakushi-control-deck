@@ -186,6 +186,28 @@ def apply_lock(settings: LockSettings) -> tuple[bool, str]:
     return True, "Lock screen updated. Use LOCK NOW to test it."
 
 
+def refresh_lock_palette() -> tuple[bool, str]:
+    """Regenerate only the palette-dependent Hyprlock config.
+
+    Auto Color calls this after a successful theme change. It intentionally
+    does not create a second history entry, so REVERT LAST still points at the
+    palette change rather than an internal synchronization write.
+    """
+    if not HYPRLOCK_CONFIG.exists():
+        return True, "Lock screen has not been generated yet."
+    data = lock_status()
+    settings = LockSettings(
+        wallpaper=str(data.get("wallpaper", "")),
+        blur_passes=int(data.get("blur_passes", 3)),
+        blur_size=int(data.get("blur_size", 8)),
+        brightness=float(data.get("brightness", 0.72)),
+        clock_24h=bool(data.get("clock_24h", True)),
+        show_date=bool(data.get("show_date", True)),
+    )
+    atomic_write(HYPRLOCK_CONFIG, _hyprlock_config(settings))
+    return True, "Lock screen colors synchronized."
+
+
 def lock_now() -> tuple[bool, str]:
     if shutil.which("hyprlock") is None:
         return False, "Hyprlock is not installed."

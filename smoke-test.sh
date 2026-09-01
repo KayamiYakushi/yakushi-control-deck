@@ -16,6 +16,7 @@ common_required=(
   tools/jsonc_check.py
   yakushi_deck/__init__.py yakushi_deck/__main__.py yakushi_deck/app.py
   yakushi_deck/core/lockscreen.py yakushi_deck/core/sddm_root.py
+  yakushi_deck/core/autocolor.py yakushi_deck/core/nautilus.py
   integrations/waybar/config.jsonc integrations/waybar/style.css
   integrations/rofi/config.rasi integrations/rofi/yakushi-opacity.rasi
   integrations/sddm/yakushi/Main.qml integrations/sddm/yakushi/metadata.desktop

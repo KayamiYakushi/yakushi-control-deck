@@ -40,16 +40,45 @@ def folder_label(path: Path) -> str:
     return str(path)
 
 
+def _inside(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 def scan(limit: int = 500, folder: str | None = None) -> list[Path]:
     images = _all_images(limit)
     if not folder or folder in {"All", "Pictures & Documents"}:
         return images
+
+    # Root filters include every nested folder below that root. This makes
+    # "Documents" useful as a default library view instead of showing only
+    # images placed directly in ~/Documents.
+    root_map = {"Documents": DOCUMENTS, "Pictures": PICTURES}
+    if folder in root_map and root_map[folder].exists():
+        base = root_map[folder]
+        return [path for path in images if _inside(path, base)]
+
     return [path for path in images if folder_label(path.parent) == folder]
 
 
 def folders() -> list[str]:
     found = {folder_label(path.parent) for path in _all_images()}
-    return sorted(found, key=lambda value: (0 if value in {"Pictures", "Documents"} else 1, value.lower()))
+    # Always expose existing roots even when every image lives in a nested
+    # subdirectory. Documents is intentionally first because the Wallpapers
+    # page uses it as the default source.
+    found.update(path.name for path in roots())
+    return sorted(
+        found,
+        key=lambda value: (
+            0 if value == "Documents" else
+            1 if value == "Pictures" else
+            2,
+            value.lower(),
+        ),
+    )
 
 
 def recent(limit: int = 16) -> list[Path]:

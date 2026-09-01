@@ -7,6 +7,17 @@ from html import escape
 from gi.repository import Gtk, Gdk, GObject, GLib, Pango
 
 from ..core.io import run
+from ..core.autocolor import (
+    apply as apply_auto_color,
+    apply_follow_if_enabled,
+    configure as configure_auto_color,
+    status as auto_color_status,
+)
+from ..core.nautilus import (
+    apply as apply_nautilus_opacity,
+    open_nautilus,
+    status as nautilus_status,
+)
 from ..core.power import apply_mode as apply_power_mode, status as power_status
 from ..core.lockscreen import (
     LockSettings,
@@ -649,7 +660,7 @@ class WallpaperPage(Page):
             "02",
             "Desktop",
             "Wallpapers",
-            "Images under ~/Pictures and ~/Documents are indexed automatically. Filter by folder or jump back to recent wallpapers."
+            "Images under ~/Documents and ~/Pictures are indexed automatically. Documents opens by default; use the folder filter to switch libraries."
         ))
 
         toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -730,7 +741,8 @@ class WallpaperPage(Page):
         self.filter_options = ["All folders", "Recent", *folders]
         model = Gtk.StringList.new(self.filter_options)
         self.folder_filter.set_model(model)
-        self.folder_filter.set_selected(0)
+        default_filter = "Documents" if "Documents" in self.filter_options else "All folders"
+        self.folder_filter.set_selected(self.filter_options.index(default_filter))
 
         self._clear_flow(self.recent_flow)
         for path in self.recent_images[:6]:
@@ -825,6 +837,14 @@ class WallpaperPage(Page):
             for recent_path in self.recent_images[:6]:
                 self.recent_flow.insert(self._tile(recent_path, compact=True), -1)
             self.recent_card.set_visible(True)
+
+            auto_ok, auto_message = apply_follow_if_enabled(path)
+            if auto_message:
+                self.status.set_text(
+                    f"{path.name} — {message}  //  {auto_message}"
+                    if auto_ok else
+                    f"{path.name} — {message}  //  Auto Color error: {auto_message}"
+                )
 
 
 class ThemePage(Page):
@@ -962,6 +982,8 @@ class ThemePage(Page):
         self.status = Gtk.Label(xalign=0)
         self.status.add_css_class("status")
 
+        self._build_auto_color()
+
         reference = card(
             "// YOUR REFERENCE",
             "SALMON DUST now uses the dusty salmon itself as normal foreground text — no near-white fallback. The preview and applied foreground share the same role."
@@ -1027,6 +1049,96 @@ class ThemePage(Page):
         self._build_typography()
         self.append(self.status)
         self.load_palette_into_controls(self.palette)
+
+    def _build_auto_color(self):
+        auto = auto_color_status()
+        self.auto_enabled = bool(auto.get("enabled", False))
+        self.auto_modes = ["DARK", "LIGHT"]
+
+        panel = card(
+            "// AUTO COLOR THEME",
+            "Build a complete tonal palette from the current wallpaper. DARK keeps deep surfaces; LIGHT creates a paper-like palette. Follow mode recolors automatically whenever you change wallpaper inside Yakushi."
+        )
+
+        self.auto_mode = Gtk.DropDown.new_from_strings(self.auto_modes)
+        self.auto_mode.set_selected(1 if auto.get("mode") == "light" else 0)
+        self.auto_mode.connect("notify::selected", self._auto_mode_changed)
+        panel.append(setting_row(
+            "Palette mode",
+            self.auto_mode,
+            "The same wallpaper can produce a dark or light desktop without changing the source image."
+        ))
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.auto_follow_button = Gtk.Button()
+        self.auto_follow_button.connect("clicked", self._toggle_auto_follow)
+        actions.append(self.auto_follow_button)
+
+        apply_now = Gtk.Button(label="GENERATE + APPLY NOW")
+        apply_now.add_css_class("primary")
+        apply_now.connect("clicked", self._apply_auto_now)
+        actions.append(apply_now)
+        panel.append(actions)
+
+        self.auto_source = Gtk.Label(xalign=0)
+        self.auto_source.add_css_class("muted")
+        self.auto_source.set_wrap(True)
+        panel.append(self.auto_source)
+
+        self.append(panel)
+        self._refresh_auto_controls()
+
+    def _selected_auto_mode(self):
+        return "light" if self.auto_mode.get_selected() == 1 else "dark"
+
+    def _refresh_auto_controls(self):
+        self.auto_follow_button.set_label(
+            "FOLLOW WALLPAPER: ON" if self.auto_enabled else "FOLLOW WALLPAPER: OFF"
+        )
+        if self.auto_enabled:
+            self.auto_follow_button.add_css_class("active")
+        else:
+            self.auto_follow_button.remove_css_class("active")
+
+        wallpaper = current_wallpaper()
+        if wallpaper:
+            self.auto_source.set_text(f"SOURCE // {wallpaper}")
+        else:
+            self.auto_source.set_text("SOURCE // No wallpaper has been applied through Yakushi yet.")
+
+    def _auto_mode_changed(self, *_):
+        mode = self._selected_auto_mode()
+        configure_auto_color(mode=mode)
+        if self.auto_enabled:
+            ok, message, palette = apply_auto_color(mode=mode)
+            if ok and palette is not None:
+                self.load_palette_into_controls(palette)
+            self.status.set_text(message)
+        self._refresh_auto_controls()
+
+    def _toggle_auto_follow(self, *_):
+        new_value = not self.auto_enabled
+        mode = self._selected_auto_mode()
+        if new_value:
+            ok, message, palette = apply_auto_color(mode=mode, enable_follow=True)
+            if ok:
+                self.auto_enabled = True
+                if palette is not None:
+                    self.load_palette_into_controls(palette)
+            self.status.set_text(message)
+        else:
+            configure_auto_color(enabled=False, mode=mode)
+            self.auto_enabled = False
+            self.status.set_text("Auto Color follow mode disabled. Your current palette stays unchanged.")
+        self._refresh_auto_controls()
+
+    def _apply_auto_now(self, *_):
+        mode = self._selected_auto_mode()
+        ok, message, palette = apply_auto_color(mode=mode)
+        if ok and palette is not None:
+            self.load_palette_into_controls(palette)
+        self.status.set_text(message)
+        self._refresh_auto_controls()
 
     def _build_typography(self):
         typography = typography_status()
@@ -1896,6 +2008,76 @@ class TerminalPage(Page):
             padding=int(self.padding.get_value()),
         )
         _, message = kitty_save(value)
+        self.status.set_text(message)
+
+
+class NautilusPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        self.append(page_header(
+            "03",
+            "Apps & Keys",
+            "Nautilus",
+            "Make GNOME Files blend into the desktop without patching libadwaita. Yakushi applies opacity at the Hyprland compositor layer."
+        ))
+
+        current = nautilus_status()
+        panel = card(
+            "// WINDOW OPACITY",
+            "This affects the complete Nautilus window. 100% removes Yakushi's override. Lower values reveal your wallpaper behind the file manager while keeping Nautilus itself untouched."
+        )
+        self.opacity = slider(float(current.get("opacity", 1.0)), 0.30, 1.0, 0.01)
+        panel.append(setting_row(
+            "Nautilus opacity",
+            self.opacity,
+            "Recommended range: 0.78–0.94. Very low opacity can reduce filename readability."
+        ))
+        self.append(panel)
+
+        info = card(
+            "// HYPRLAND RULE",
+            "Yakushi writes one clearly marked, reversible rule to your main Hyprland config and reloads it only after creating a backup. A new config error triggers an automatic rollback."
+        )
+        self.detected = Gtk.Label(xalign=0)
+        self.detected.set_wrap(True)
+        self.detected.add_css_class("muted")
+        available = "DETECTED" if current.get("available") else "NOT INSTALLED (OPTIONAL)"
+        target = current.get("config") or "Hyprland config not found"
+        self.detected.set_text(f"NAUTILUS // {available}    CONFIG // {target}")
+        info.append(self.detected)
+        self.append(info)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        apply_button = Gtk.Button(label="APPLY NAUTILUS OPACITY")
+        apply_button.add_css_class("primary")
+        apply_button.connect("clicked", self.apply)
+        actions.append(apply_button)
+
+        reset = Gtk.Button(label="RESET TO 100%")
+        reset.connect("clicked", self.reset)
+        actions.append(reset)
+
+        launch = Gtk.Button(label="OPEN NAUTILUS")
+        launch.connect("clicked", self.launch)
+        actions.append(launch)
+        self.append(actions)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("status")
+        self.append(self.status)
+
+    def apply(self, *_):
+        ok, message = apply_nautilus_opacity(round(self.opacity.scale.get_value(), 2))
+        self.status.set_text(message)
+
+    def reset(self, *_):
+        self.opacity.scale.set_value(1.0)
+        ok, message = apply_nautilus_opacity(1.0)
+        self.status.set_text(message)
+
+    def launch(self, *_):
+        _ok, message = open_nautilus()
         self.status.set_text(message)
 
 

@@ -8,6 +8,8 @@ BACKUPS = DATA / "backups"
 STATE = DATA / "state.json"
 TYPOGRAPHY_STATE = DATA / "typography.json"
 POWER_STATE = DATA / "governor"
+AUTO_COLOR_STATE = DATA / "auto-color.json"
+NAUTILUS_STATE = DATA / "nautilus.json"
 
 HYPR_COLORS_CSS = CONFIG / "hypr" / "colors.css"
 HYPR_COLORS_RASI = CONFIG / "hypr" / "colors.rasi"

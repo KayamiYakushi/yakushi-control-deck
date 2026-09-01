@@ -19,6 +19,10 @@ for cmd in python3 hyprctl waybar rofi kitty pkexec; do
   command -v "$cmd" >/dev/null 2>&1 && ok "$cmd" || bad "$cmd not found"
 done
 
+python3 -c 'import gi; gi.require_version("GdkPixbuf","2.0"); from gi.repository import GdkPixbuf' >/dev/null 2>&1 \
+  && ok 'GdkPixbuf Auto Color backend' || bad 'GdkPixbuf Python binding unavailable'
+command -v nautilus >/dev/null 2>&1 && ok 'nautilus (optional integration)' || info 'nautilus not installed (Nautilus Studio remains optional)'
+
 for file in \
   "$HOME/.config/waybar/config.jsonc" \
   "$HOME/.config/waybar/style.css" \

@@ -157,6 +157,9 @@ def revert_latest() -> tuple[bool, str]:
             timeout=2.0,
         )
 
+    if any(value.endswith("/hyprland.lua") or value.endswith("/hyprland.conf") for value in restored_strings):
+        run(["hyprctl", "reload"], timeout=5.0)
+
     label = metadata.get("label", "Last change")
 
     # Consume this undo step so the next click walks further back in history.

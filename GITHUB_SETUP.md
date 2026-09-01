@@ -14,7 +14,7 @@ Before publishing a release, run the non-destructive package check:
 ./smoke-test.sh
 ```
 
-Then commit the prepared release on `main`, push it, create an annotated version tag, and push the tag. Replace `<version>` with the release version, for example `v1.1.5`:
+Then commit the prepared release on `main`, push it, create an annotated version tag, and push the tag. Replace `<version>` with the release version, for example `v1.2.1`:
 
 ```bash
 git switch main

@@ -6,7 +6,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"; BACKUP="$DATA/install-backups/$STAMP"
 say(){ printf '%s\n' "$*"; }; fail(){ printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 command -v pacman >/dev/null 2>&1 || fail 'Arch Linux / pacman is required.'
 command -v sudo >/dev/null 2>&1 || fail 'sudo is required.'
-PACKAGES=(python python-gobject gtk4 hyprland waybar rofi kitty hyprpaper hyprlock pavucontrol playerctl brightnessctl wl-clipboard ttf-jetbrains-mono-nerd polkit)
+PACKAGES=(python python-gobject gtk4 gdk-pixbuf2 hyprland waybar rofi kitty hyprpaper hyprlock pavucontrol playerctl brightnessctl wl-clipboard ttf-jetbrains-mono-nerd polkit)
 missing=(); for package in "${PACKAGES[@]}"; do pacman -Qi "$package" >/dev/null 2>&1 || missing+=("$package"); done
 if ((${#missing[@]})); then say 'Installing official Arch packages:'; printf '  %s\n' "${missing[@]}"; sudo pacman -S --needed "${missing[@]}"; fi
 
@@ -52,5 +52,5 @@ python3 -m compileall -q "$TARGET/yakushi_deck"
 python3 "$TARGET/tools/jsonc_check.py" "$HOME/.config/waybar/config.jsonc"
 rofi -no-config -theme "$HOME/.config/rofi/config.rasi" -dump-theme >/dev/null
 pkill -x waybar 2>/dev/null || true; nohup waybar >/tmp/yakushi-waybar.log 2>&1 &
-printf '{"version":"1.1.5","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
-say ''; say '薬  Yakushi Control Deck 1.1.5 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
+printf '{"version":"1.2.1","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
+say ''; say '薬  Yakushi Control Deck 1.2.1 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'

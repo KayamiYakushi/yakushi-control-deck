@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.1
+
+- Reset the main content scroll position to the top whenever a sidebar page is opened.
+- Wallpapers now defaults to the `~/Documents` library.
+- `Documents` and `Pictures` root filters now include images in nested subfolders.
+- Keep both wallpaper roots indexed while making Documents the initial view.
+
+## 1.2.0
+
+- Added **Auto Color Theme** generation from the current wallpaper.
+- Added DARK and LIGHT auto-palette modes with contrast-safe tonal roles.
+- Added optional **FOLLOW WALLPAPER** mode; wallpapers applied through Yakushi can recolor Waybar/Rofi/shared desktop colors automatically.
+- Auto Color also requests the matching GNOME/libadwaita color scheme so apps such as Nautilus follow dark/light intent where supported.
+- Added **Nautilus Studio** with compositor-level opacity control.
+- Nautilus opacity uses a marked Hyprland window rule instead of fragile GTK/libadwaita CSS overrides.
+- Supports both modern Hyprland Lua config and legacy `hyprland.conf`, with backup, reload validation, and automatic rollback on new config errors.
+- 100% Nautilus opacity removes the Yakushi-managed rule cleanly.
+- Added explicit `gdk-pixbuf2` dependency for wallpaper color sampling; still official Arch repositories only.
+
 ## 1.1.5
 - Fixed `doctor.sh` false failures for Waybar JSONC files and fresh-clone SDDM bundle detection.
 - Added a standard-library JSONC validator supporting comments and trailing commas.
