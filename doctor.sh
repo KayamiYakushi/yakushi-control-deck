@@ -10,18 +10,37 @@ info(){ printf '[INFO] %s\n' "$*"; }
 # Package/source integrity. Works from either a fresh clone/archive or the
 # installed application directory.
 if [[ -x "$ROOT/smoke-test.sh" ]]; then
-  "$ROOT/smoke-test.sh" --quiet >/dev/null 2>&1 && ok 'Yakushi package integrity' || bad 'Yakushi package integrity failed (run ./smoke-test.sh)'
+  smoke_args=(--quiet)
+  # The installed application intentionally does not carry source-only install/update
+  # entrypoints. Detect that layout so diagnostics cannot report a false integrity failure.
+  if [[ "$ROOT" == "$TARGET" || ! -f "$ROOT/install.sh" ]]; then
+    smoke_args+=(--installed)
+  fi
+  "$ROOT/smoke-test.sh" "${smoke_args[@]}" >/dev/null 2>&1 \
+    && ok 'Yakushi package integrity' \
+    || bad 'Yakushi package integrity failed (run ./smoke-test.sh with the matching layout)'
 else
   info 'package smoke-test helper not present in this directory'
 fi
 
-for cmd in python3 hyprctl waybar rofi kitty pkexec; do
+for cmd in python3 hyprctl waybar rofi kitty fastfetch pkexec; do
   command -v "$cmd" >/dev/null 2>&1 && ok "$cmd" || bad "$cmd not found"
 done
 
 python3 -c 'import gi; gi.require_version("GdkPixbuf","2.0"); from gi.repository import GdkPixbuf' >/dev/null 2>&1 \
   && ok 'GdkPixbuf Auto Color backend' || bad 'GdkPixbuf Python binding unavailable'
 command -v nautilus >/dev/null 2>&1 && ok 'nautilus (optional integration)' || info 'nautilus not installed (Nautilus Studio remains optional)'
+
+if [[ -f "$HOME/.config/fastfetch/config.jsonc" ]]; then
+  ok 'Fastfetch config'
+else
+  info 'Fastfetch config not created yet (Fastfetch Studio can create it)'
+fi
+if [[ -f "$HOME/.config/kitty/yakushi-colors.conf" ]]; then
+  ok 'Kitty Yakushi color override'
+else
+  info 'Kitty color override not enabled yet (apply Terminal Colors to create it)'
+fi
 
 for file in \
   "$HOME/.config/waybar/config.jsonc" \

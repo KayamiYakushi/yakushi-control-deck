@@ -3,7 +3,14 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUIET=0
-[[ "${1:-}" == "--quiet" ]] && QUIET=1
+INSTALLED_LAYOUT=0
+for arg in "$@"; do
+  case "$arg" in
+    --quiet) QUIET=1 ;;
+    --installed) INSTALLED_LAYOUT=1 ;;
+    *) printf 'Unknown smoke-test option: %s\n' "$arg" >&2; exit 2 ;;
+  esac
+done
 fail=0
 
 ok(){ ((QUIET)) || printf '[ OK ] %s\n' "$*"; }
@@ -16,30 +23,36 @@ common_required=(
   tools/jsonc_check.py
   yakushi_deck/__init__.py yakushi_deck/__main__.py yakushi_deck/app.py
   yakushi_deck/core/lockscreen.py yakushi_deck/core/sddm_root.py
-  yakushi_deck/core/autocolor.py yakushi_deck/core/nautilus.py
+  yakushi_deck/core/autocolor.py yakushi_deck/core/nautilus.py yakushi_deck/core/fastfetch.py yakushi_deck/core/frame.py
   integrations/waybar/config.jsonc integrations/waybar/style.css
   integrations/rofi/config.rasi integrations/rofi/yakushi-opacity.rasi
+  integrations/fastfetch/config.jsonc integrations/fastfetch/logo.txt integrations/fastfetch/yakushi-logo.txt
   integrations/sddm/yakushi/Main.qml integrations/sddm/yakushi/metadata.desktop
   integrations/sddm/yakushi/theme.conf
+  screenshots/desktop.png screenshots/control-deck.png
 )
 for rel in "${common_required[@]}"; do
   [[ -f "$ROOT/$rel" ]] && ok "bundle: $rel" || bad "bundle missing: $rel"
 done
 
-# A source checkout/release archive also contains installation/update entrypoints.
-# The installed application copy intentionally omits self-replacing installers.
-if [[ -f "$ROOT/install.sh" ]]; then
+# Source checkouts/release archives validate self-replacing install/update entrypoints.
+# Installed application copies may contain stale source entrypoints from older releases;
+# --installed deliberately ignores them so they cannot create false version failures.
+if ((INSTALLED_LAYOUT)); then
+  info 'installed-layout smoke test: source-only install/update entrypoints skipped'
+else
   for rel in install.sh install.fish update.sh; do
     [[ -f "$ROOT/$rel" ]] && ok "source bundle: $rel" || bad "source bundle missing: $rel"
   done
-else
-  info 'installed-layout smoke test: source-only install/update entrypoints skipped'
 fi
 
 command -v python3 >/dev/null 2>&1 || bad 'python3 is required for package checks'
 if command -v python3 >/dev/null 2>&1; then
   python3 "$ROOT/tools/jsonc_check.py" "$ROOT/integrations/waybar/config.jsonc" >/dev/null 2>&1 \
     && ok 'bundled Waybar JSONC validates' || bad 'bundled Waybar JSONC invalid'
+
+  python3 "$ROOT/tools/jsonc_check.py" "$ROOT/integrations/fastfetch/config.jsonc" >/dev/null 2>&1 \
+    && ok 'bundled Fastfetch JSONC validates' || bad 'bundled Fastfetch JSONC invalid'
 
   ROOT="$ROOT" python3 - <<'PY' >/dev/null 2>&1
 import os
@@ -52,14 +65,16 @@ PY
 fi
 
 bash_scripts=(doctor.sh uninstall.sh restore-last-install.sh install-sddm-theme.sh smoke-test.sh)
-[[ -f "$ROOT/install.sh" ]] && bash_scripts+=(install.sh update.sh)
+if ((!INSTALLED_LAYOUT)); then
+  bash_scripts+=(install.sh update.sh)
+fi
 for script in "${bash_scripts[@]}"; do
   bash -n "$ROOT/$script" >/dev/null 2>&1 && ok "bash syntax: $script" || bad "bash syntax: $script"
 done
 
 if command -v fish >/dev/null 2>&1; then
   fish_scripts=(bind-super-m-lock.fish)
-  [[ -f "$ROOT/install.fish" ]] && fish_scripts+=(install.fish)
+  if ((!INSTALLED_LAYOUT)); then fish_scripts+=(install.fish); fi
   for script in "${fish_scripts[@]}"; do
     fish -n "$ROOT/$script" >/dev/null 2>&1 && ok "fish syntax: $script" || bad "fish syntax: $script"
   done
@@ -67,11 +82,22 @@ else
   info 'fish not installed; Fish-only syntax checks skipped'
 fi
 
+scan_paths=("$ROOT/doctor.sh" "$ROOT/integrations" "$ROOT/yakushi_deck")
+if ((!INSTALLED_LAYOUT)); then scan_paths+=("$ROOT/install.sh"); fi
 if grep -RInE --exclude='README.md' --exclude='CHANGELOG.md' --exclude='RELEASE_NOTES_*' '/home/yakushi|yakushidotfiles' \
-    "$ROOT/doctor.sh" "$ROOT/integrations" "$ROOT/yakushi_deck" ${ROOT:+"$ROOT/install.sh"} 2>/dev/null | grep -v ': No such file or directory' >/dev/null 2>&1; then
+    "${scan_paths[@]}" 2>/dev/null | grep -v ': No such file or directory' >/dev/null 2>&1; then
   bad 'private hard-coded home/dotfiles path found'
 else
   ok 'no private hard-coded home/dotfiles paths'
+fi
+
+if ((!INSTALLED_LAYOUT)); then
+  if find "$ROOT/yakushi_deck" -type d -name __pycache__ -print -quit 2>/dev/null | grep -q . \
+      || find "$ROOT/yakushi_deck" -type f -name '*.pyc' -print -quit 2>/dev/null | grep -q .; then
+    bad 'Python cache/bytecode files are present in the source release'
+  else
+    ok 'source release contains no Python cache/bytecode files'
+  fi
 fi
 
 if grep -Fq '@import "yakushi-opacity.rasi"' "$ROOT/integrations/rofi/config.rasi"; then
@@ -91,7 +117,7 @@ PY
 version_ok=1
 [[ -n "$version" ]] || version_ok=0
 grep -Fq "Version=$version" "$ROOT/integrations/sddm/yakushi/metadata.desktop" || version_ok=0
-if [[ -f "$ROOT/install.sh" ]]; then
+if ((!INSTALLED_LAYOUT)); then
   grep -Fq "\"version\":\"$version\"" "$ROOT/install.sh" || version_ok=0
 fi
 if ((version_ok)); then

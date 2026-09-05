@@ -5,6 +5,7 @@ import pwd
 import re
 import shlex
 import shutil
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -359,8 +360,17 @@ def _launch_sddm_sudo_installer(helper: Path, directory: Path) -> bool:
         "else echo 'Yakushi SDDM installation failed.'; fi; "
         "echo; read -r -p 'Press Enter to close...' _; exit $status"
     )
-    proc = run([terminal, "--title", "Yakushi SDDM Installer", "sh", "-lc", command], timeout=2.0)
-    return proc.returncode == 0
+    try:
+        subprocess.Popen(
+            [terminal, "--detach", "--title", "Yakushi SDDM Installer", "sh", "-lc", command],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return True
+    except OSError:
+        return False
 
 
 def install_sddm(settings: SddmSettings) -> tuple[bool, str]:
@@ -379,18 +389,22 @@ def install_sddm(settings: SddmSettings) -> tuple[bool, str]:
     # privilege path falls back to a terminal sudo prompt.
     save_json(SDDM_STATE, asdict(settings))
 
-    if shutil.which("pkexec") is not None:
-        proc = run(["pkexec", "/usr/bin/python3", str(helper), "install", "--source", str(directory)], timeout=120.0)
-        if proc.returncode == 0:
-            return _verify_sddm_install()
-
-    # Some Polkit setups reject pkexec authentication even though normal sudo
-    # works. Open a visible terminal prompt instead of silently leaving users
-    # on the stock SDDM theme.
+    # SDDM is a system-level component. Always use a visible terminal sudo
+    # prompt instead of pkexec. Minimal Hyprland sessions commonly have no
+    # graphical Polkit authentication agent, which leaves pkexec waiting with
+    # no visible password prompt and can make the application appear hung.
+    # Kitty is an official Yakushi dependency, so the privilege boundary stays
+    # explicit and the GTK process never waits for administrator input.
     if _launch_sddm_sudo_installer(helper, directory):
-        return True, "Polkit could not complete the install, so Yakushi opened a sudo installer terminal. Enter your Linux password there, then log out or reboot."
+        return True, (
+            "Administrator terminal opened. Enter your Linux password there to "
+            "install/update Yakushi SDDM. The Control Deck can remain open."
+        )
 
-    return False, "SDDM needs administrator access. Run ./install-sddm-theme.sh from the Yakushi repository."
+    return False, (
+        "SDDM needs administrator access, but the terminal sudo prompt could not "
+        "be opened. Run ./install-sddm-theme.sh from the Yakushi repository."
+    )
 
 
 def _launch_sddm_sudo_disable(helper: Path) -> bool:
@@ -405,8 +419,17 @@ def _launch_sddm_sudo_disable(helper: Path) -> bool:
         "else echo 'Yakushi SDDM restore failed.'; fi; "
         "echo; read -r -p 'Press Enter to close...' _; exit $status"
     )
-    proc = run([terminal, "--title", "Yakushi SDDM Restore", "sh", "-lc", command], timeout=2.0)
-    return proc.returncode == 0
+    try:
+        subprocess.Popen(
+            [terminal, "--detach", "--title", "Yakushi SDDM Restore", "sh", "-lc", command],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return True
+    except OSError:
+        return False
 
 
 def disable_sddm() -> tuple[bool, str]:
@@ -414,12 +437,16 @@ def disable_sddm() -> tuple[bool, str]:
     if not helper.exists():
         return False, "SDDM privilege helper is missing."
 
-    if shutil.which("pkexec") is not None:
-        proc = run(["pkexec", "/usr/bin/python3", str(helper), "disable"], timeout=120.0)
-        if proc.returncode == 0:
-            return True, "Yakushi SDDM disabled. Your previous SDDM configuration was restored."
-
+    # Keep restore on the same explicit terminal-sudo path as installation.
+    # This avoids depending on a desktop Polkit agent in minimal Hyprland
+    # sessions and keeps the GTK process completely out of the auth wait.
     if _launch_sddm_sudo_disable(helper):
-        return True, "Polkit could not complete the restore, so Yakushi opened a sudo restore terminal."
+        return True, (
+            "Administrator terminal opened. Enter your Linux password there to "
+            "restore the previous SDDM configuration."
+        )
 
-    return False, "SDDM restore needs administrator access."
+    return False, (
+        "SDDM restore needs administrator access, but the terminal sudo prompt "
+        "could not be opened."
+    )

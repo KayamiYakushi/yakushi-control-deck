@@ -14,6 +14,7 @@ from .ui.common import install_css, open_folder, open_uri
 from .ui.pages import (
     AppearancePage,
     DisplaysPage,
+    FastfetchPage,
     InputPage,
     PowerPage,
     LockPage,
@@ -137,6 +138,7 @@ class Window(Gtk.ApplicationWindow):
                 "APPS & KEYS",
                 [
                     ("terminal", "Terminal", "端末", TerminalPage),
+                    ("fastfetch", "Fastfetch", "情報", FastfetchPage),
                     ("nautilus", "Nautilus", "書類", NautilusPage),
                     ("rofi", "Rofi", "起動", RofiPage),
                 ],
@@ -663,6 +665,21 @@ def main():
             color: #b44f5e;
             font-family: "JetBrainsMono Nerd Font", monospace;
             font-size: 11px;
+        }
+
+        .code-editor {
+            background-color: #070809;
+            color: #d8d0cc;
+            border: 1px solid #29272a;
+            font-family: "JetBrainsMono Nerd Font", monospace;
+            font-size: 11px;
+            padding: 10px;
+        }
+
+        .fastfetch-module {
+            background-color: #090b0c;
+            border: 1px solid #29272a;
+            padding: 7px 9px;
         }
 
         .rofi-preview {

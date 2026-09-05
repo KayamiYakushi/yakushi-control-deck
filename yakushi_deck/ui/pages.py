@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import threading
 from urllib.parse import quote
 from html import escape
 
@@ -18,6 +19,23 @@ from ..core.nautilus import (
     open_nautilus,
     status as nautilus_status,
 )
+from ..core.fastfetch import (
+    COMMON_MODULES as FASTFETCH_COMMON_MODULES,
+    apply_modules as apply_fastfetch_modules,
+    load as fastfetch_load,
+    preview as preview_fastfetch,
+    save_config_text as save_fastfetch_config,
+    save_logo as save_fastfetch_logo,
+    reset_config as reset_fastfetch_config,
+    set_autorun as set_fastfetch_autorun,
+    set_logo_padding as set_fastfetch_logo_padding,
+    sync_terminal_colors as sync_fastfetch_terminal_colors,
+)
+from ..core.frame import (
+    FrameSettings,
+    apply as apply_window_frame,
+    status as window_frame_status,
+)
 from ..core.power import apply_mode as apply_power_mode, status as power_status
 from ..core.lockscreen import (
     LockSettings,
@@ -33,10 +51,13 @@ from ..core.lockscreen import (
 
 from ..core.apps import (
     KittyState,
+    KittyColorState,
     RofiState,
     WaybarState,
     kitty_load,
     kitty_save,
+    kitty_colors_load,
+    kitty_colors_save,
     rofi_load,
     rofi_save,
     waybar_load,
@@ -612,11 +633,70 @@ class AppearancePage(Page):
         geometry.append(setting_row("Corner roundness", self.rounding))
         self.append(geometry)
 
+        frame_state = window_frame_status()
+        frame_panel = card(
+            "// WINDOW FRAME & SHADOW",
+            "FOLLOW keeps active/inactive borders synchronized with Theme Studio and Auto Color. CUSTOM lets you pick your own frame colors. Shadow controls are independent in both modes."
+        )
+        self.frame_modes = ["FOLLOW YAKUSHI THEME", "CUSTOM"]
+        self.frame_mode = Gtk.DropDown.new_from_strings(self.frame_modes)
+        self.frame_mode.set_selected(0 if frame_state.mode == "follow" else 1)
+        self.frame_mode.connect("notify::selected", self._frame_mode_changed)
+        frame_panel.append(setting_row("Color source", self.frame_mode))
+
+        self.frame_colors = {}
+        color_grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+        color_grid.set_column_homogeneous(True)
+        for index, (key, label, value) in enumerate((
+            ("active", "Active border", frame_state.active_border),
+            ("inactive", "Inactive border", frame_state.inactive_border),
+            ("shadow", "Shadow color", frame_state.shadow_color),
+        )):
+            button = Gtk.ColorDialogButton(dialog=Gtk.ColorDialog())
+            rgba = Gdk.RGBA()
+            rgba.parse(value)
+            button.set_rgba(rgba)
+            self.frame_colors[key] = button
+            chip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            chip.add_css_class("color-chip")
+            title = Gtk.Label(label=label, xalign=0)
+            title.add_css_class("setting-name")
+            chip.append(title)
+            chip.append(button)
+            color_grid.attach(chip, index, 0, 1, 1)
+        frame_panel.append(color_grid)
+
+        self.shadow_enabled = Gtk.Switch(active=frame_state.shadow_enabled)
+        self.shadow_opacity = slider(frame_state.shadow_opacity, 0.0, 1.0, 0.01)
+        self.shadow_range = spin(frame_state.shadow_range, 0, 100)
+        self.shadow_power = spin(frame_state.shadow_render_power, 1, 4)
+        self.shadow_offset_x = spin(frame_state.shadow_offset_x, -50, 50)
+        self.shadow_offset_y = spin(frame_state.shadow_offset_y, -50, 50)
+        self.shadow_scale = slider(frame_state.shadow_scale, 0.0, 1.0, 0.01)
+        frame_panel.append(setting_row("Drop shadow", self.shadow_enabled))
+        frame_panel.append(setting_row("Shadow opacity", self.shadow_opacity, "Alpha is encoded into Hyprland's shadow color."))
+        frame_panel.append(setting_row("Shadow size", self.shadow_range))
+        frame_panel.append(setting_row("Shadow falloff", self.shadow_power, "1 is softest; 4 falls off fastest."))
+        offsets = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        offsets.append(Gtk.Label(label="X", xalign=0))
+        offsets.append(self.shadow_offset_x)
+        offsets.append(Gtk.Label(label="Y", xalign=0))
+        offsets.append(self.shadow_offset_y)
+        frame_panel.append(setting_row("Shadow offset", offsets, "Positive Y moves the shadow downward."))
+        frame_panel.append(setting_row("Shadow scale", self.shadow_scale))
+        self.append(frame_panel)
+
+        frame_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        frame_actions.append(action_button("APPLY WINDOW FRAME", self.apply_frame, primary=True))
+        frame_actions.append(action_button("LOAD CURRENT THEME COLORS", self.load_frame_theme))
+        self.append(frame_actions)
+
         self.status = Gtk.Label(xalign=0)
         self.status.add_css_class("status")
 
         self.append(action_button("APPLY APPEARANCE", self.apply, primary=True))
         self.append(self.status)
+        self._frame_mode_changed()
 
     def _read_values(self):
         return {
@@ -650,6 +730,60 @@ class AppearancePage(Page):
     def apply(self, *_):
         _, message = apply_appearance(self._read_values())
         self.status.set_text(message)
+
+    @staticmethod
+    def _frame_button_hex(button) -> str:
+        rgba = button.get_rgba()
+        return "#{:02x}{:02x}{:02x}".format(
+            round(rgba.red * 255), round(rgba.green * 255), round(rgba.blue * 255)
+        )
+
+    def _set_frame_colors(self, active: str, inactive: str, shadow: str):
+        for key, value in (("active", active), ("inactive", inactive), ("shadow", shadow)):
+            rgba = Gdk.RGBA()
+            rgba.parse(value)
+            self.frame_colors[key].set_rgba(rgba)
+
+    def _frame_mode_changed(self, *_):
+        follow = self.frame_mode.get_selected() == 0
+        if follow:
+            palette = load_palette()
+            self._set_frame_colors(palette.accent, palette.border, palette.bg)
+        for button in self.frame_colors.values():
+            button.set_sensitive(not follow)
+
+    def load_frame_theme(self, *_):
+        palette = load_palette()
+        self.frame_mode.set_selected(0)
+        self._set_frame_colors(palette.accent, palette.border, palette.bg)
+        self._frame_mode_changed()
+        self.status.set_text("Current Yakushi palette loaded for borders and shadow. Apply Window Frame to persist it.")
+
+    def apply_frame(self, *_):
+        follow = self.frame_mode.get_selected() == 0
+        if follow:
+            palette = load_palette()
+            active, inactive, shadow = palette.accent, palette.border, palette.bg
+            self._set_frame_colors(active, inactive, shadow)
+        else:
+            active = self._frame_button_hex(self.frame_colors["active"])
+            inactive = self._frame_button_hex(self.frame_colors["inactive"])
+            shadow = self._frame_button_hex(self.frame_colors["shadow"])
+        value = FrameSettings(
+            mode="follow" if follow else "custom",
+            active_border=active,
+            inactive_border=inactive,
+            shadow_enabled=self.shadow_enabled.get_active(),
+            shadow_color=shadow,
+            shadow_opacity=round(self.shadow_opacity.scale.get_value(), 2),
+            shadow_range=int(self.shadow_range.get_value()),
+            shadow_render_power=int(self.shadow_power.get_value()),
+            shadow_offset_x=int(self.shadow_offset_x.get_value()),
+            shadow_offset_y=int(self.shadow_offset_y.get_value()),
+            shadow_scale=round(self.shadow_scale.scale.get_value(), 2),
+        )
+        ok, message = apply_window_frame(value)
+        self.status.set_text(message if ok else "ERROR: " + message)
 
 
 class WallpaperPage(Page):
@@ -1896,7 +2030,7 @@ class LoginPage(Page):
             "Make SDDM visually match the Yakushi Hyprlock screen while keeping SDDM as the real boot login manager."
         ))
 
-        status_card = card("// SDDM STATUS", "Installing the theme needs one Polkit authorization because SDDM themes live under /usr/share/sddm. Yakushi verifies both the theme files and active SDDM configuration after installation.")
+        status_card = card("// SDDM STATUS", "Installing the theme needs administrator authorization because SDDM themes live under /usr/share/sddm. Yakushi opens a dedicated Kitty sudo terminal so the password prompt is always visible and does not depend on a graphical Polkit agent.")
         text = "SDDM detected" if info.get("available") else "SDDM is not installed"
         active = info.get("active_theme") or "embedded/default"
         state = "ACTIVE" if info.get("active") else ("INSTALLED" if info.get("installed") else "NOT INSTALLED")
@@ -1936,10 +2070,14 @@ class LoginPage(Page):
 
         self.status = Gtk.Label(xalign=0)
         self.status.add_css_class("status")
+        self._sddm_busy = False
         actions = Gtk.Box(spacing=8)
-        actions.append(action_button("PREVIEW SDDM", self.preview))
-        actions.append(action_button("INSTALL / UPDATE SDDM", self.install, primary=True))
-        actions.append(action_button("DISABLE YAKUSHI SDDM", self.disable))
+        self.preview_button = action_button("PREVIEW SDDM", self.preview)
+        self.install_button = action_button("INSTALL / UPDATE SDDM", self.install, primary=True)
+        self.disable_button = action_button("DISABLE YAKUSHI SDDM", self.disable)
+        actions.append(self.preview_button)
+        actions.append(self.install_button)
+        actions.append(self.disable_button)
         self.append(actions)
         self.append(self.status)
 
@@ -1950,16 +2088,59 @@ class LoginPage(Page):
         _ok, message = preview_sddm(self.settings())
         self.status.set_text(message)
 
+    def _set_sddm_busy(self, busy: bool, message: str = ""):
+        self._sddm_busy = busy
+        self.preview_button.set_sensitive(not busy)
+        self.install_button.set_sensitive(not busy)
+        self.disable_button.set_sensitive(not busy)
+        if message:
+            self.status.set_text(message)
+
+    def _finish_sddm_action(self, _ok: bool, message: str):
+        self._set_sddm_busy(False, message)
+        return GLib.SOURCE_REMOVE
+
+    def _run_sddm_action(self, operation: str):
+        if self._sddm_busy:
+            return
+
+        # Read GTK widget state on the main thread before starting background
+        # work. pkexec/sudo may wait for user interaction, so never block the
+        # GTK main loop while privileged SDDM work is in progress.
+        settings = self.settings() if operation == "install" else None
+        waiting = (
+            "Opening administrator terminal…"
+            if operation == "install"
+            else "Opening administrator terminal to restore SDDM…"
+        )
+        self._set_sddm_busy(True, waiting)
+
+        def worker():
+            try:
+                if operation == "install":
+                    ok, message = install_sddm(settings)
+                else:
+                    ok, message = disable_sddm()
+            except Exception as exc:
+                ok, message = False, f"SDDM operation failed: {exc}"
+            GLib.idle_add(self._finish_sddm_action, ok, message)
+
+        threading.Thread(
+            target=worker,
+            name=f"yakushi-sddm-{operation}",
+            daemon=True,
+        ).start()
+
     def install(self, *_):
-        _ok, message = install_sddm(self.settings())
-        self.status.set_text(message)
+        self._run_sddm_action("install")
 
     def disable(self, *_):
-        _ok, message = disable_sddm()
-        self.status.set_text(message)
+        self._run_sddm_action("disable")
 
 
 class TerminalPage(Page):
+    COLOR_MODES = ["FOLLOW YAKUSHI THEME", "CUSTOM"]
+
     def __init__(self):
         super().__init__()
 
@@ -1967,18 +2148,23 @@ class TerminalPage(Page):
             "03",
             "Apps & Keys",
             "Terminal",
-            "Kitty appearance, including the application side of the liquid glass effect."
+            "Kitty appearance, transparency and a complete theme-aware terminal color palette."
         ))
 
         current = kitty_load()
+        colors = kitty_colors_load()
 
-        preview = card("// PREVIEW")
-        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        mock.add_css_class("terminal-preview")
-        mock.append(Gtk.Label(label="user@hyprland  ~", xalign=0))
-        mock.append(Gtk.Label(label="❯ yakushi-deck", xalign=0))
-        mock.append(Gtk.Label(label="Desktop control, without replacing the shell.", xalign=0))
-        preview.append(mock)
+        preview = card("// LIVE PREVIEW")
+        self.preview_mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        self.preview_mock.add_css_class("terminal-preview")
+        self.preview_name = f"yakushi-terminal-preview-{id(self)}"
+        self.preview_mock.set_name(self.preview_name)
+        line1 = Gtk.Label(label="user@hyprland  ~", xalign=0)
+        line1.add_css_class("terminal-preview-accent")
+        self.preview_mock.append(line1)
+        self.preview_mock.append(Gtk.Label(label="❯ yakushi-deck", xalign=0))
+        self.preview_mock.append(Gtk.Label(label="Desktop control, without replacing the shell.", xalign=0))
+        preview.append(self.preview_mock)
         self.append(preview)
 
         settings = card("// KITTY")
@@ -1995,11 +2181,138 @@ class TerminalPage(Page):
         ))
         self.append(settings)
 
+        color_panel = card(
+            "// TERMINAL COLORS",
+            "FOLLOW keeps Kitty synchronized with Theme Studio and Auto Color. CUSTOM lets you choose your own background, foreground and accent. Accent also tints Kitty's 16-color ANSI palette, so Fastfetch and CLI colors stop being locked to an older red theme."
+        )
+        self.color_mode = Gtk.DropDown.new_from_strings(self.COLOR_MODES)
+        self.color_mode.set_selected(0 if colors.mode == "follow" else 1)
+        self.color_mode.connect("notify::selected", self._color_mode_changed)
+        color_panel.append(setting_row(
+            "Color source",
+            self.color_mode,
+            "FOLLOW updates automatically whenever the Yakushi desktop palette changes."
+        ))
+
+        self.color_buttons = {}
+        color_grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+        color_grid.set_column_homogeneous(True)
+        for index, (key, label, value) in enumerate((
+            ("background", "Background", colors.background),
+            ("foreground", "Foreground", colors.foreground),
+            ("accent", "Accent / ANSI", colors.accent),
+        )):
+            button = Gtk.ColorDialogButton(dialog=Gtk.ColorDialog())
+            rgba = Gdk.RGBA()
+            rgba.parse(value)
+            button.set_rgba(rgba)
+            button.connect("notify::rgba", self._color_changed)
+            self.color_buttons[key] = button
+            chip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            chip.add_css_class("color-chip")
+            title = Gtk.Label(label=label, xalign=0)
+            title.add_css_class("setting-name")
+            chip.append(title)
+            chip.append(button)
+            color_grid.attach(chip, index, 0, 1, 1)
+        color_panel.append(color_grid)
+        self.append(color_panel)
+
+        color_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        color_actions.append(action_button("APPLY TERMINAL COLORS", self.apply_colors, primary=True))
+        color_actions.append(action_button("LOAD CURRENT DESKTOP THEME", self.load_desktop_theme))
+        self.append(color_actions)
+
         self.status = Gtk.Label(xalign=0)
         self.status.add_css_class("status")
 
         self.append(action_button("APPLY KITTY SETTINGS", self.apply, primary=True))
         self.append(self.status)
+
+        self._preview_provider = Gtk.CssProvider()
+        self.preview_mock.get_style_context().add_provider(
+            self._preview_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
+        )
+        self._color_mode_changed()
+        self._refresh_preview()
+
+    @staticmethod
+    def _button_hex(button) -> str:
+        rgba = button.get_rgba()
+        return "#{:02x}{:02x}{:02x}".format(
+            round(rgba.red * 255),
+            round(rgba.green * 255),
+            round(rgba.blue * 255),
+        )
+
+    def _set_color_buttons(self, background: str, foreground: str, accent: str):
+        for key, value in (
+            ("background", background),
+            ("foreground", foreground),
+            ("accent", accent),
+        ):
+            rgba = Gdk.RGBA()
+            rgba.parse(value)
+            self.color_buttons[key].set_rgba(rgba)
+
+    def _color_mode_changed(self, *_):
+        follow = self.color_mode.get_selected() == 0
+        if follow:
+            palette = load_palette()
+            self._set_color_buttons(palette.bg, palette.fg, palette.accent)
+        for button in self.color_buttons.values():
+            button.set_sensitive(not follow)
+        self._refresh_preview()
+
+    def _color_changed(self, *_):
+        self._refresh_preview()
+
+    def _refresh_preview(self):
+        if not hasattr(self, "_preview_provider"):
+            return
+        background = self._button_hex(self.color_buttons["background"])
+        foreground = self._button_hex(self.color_buttons["foreground"])
+        accent = self._button_hex(self.color_buttons["accent"])
+        self._preview_provider.load_from_data((
+            f"#{self.preview_name} {{ background-color: {background}; border-color: {accent}; }}\n"
+            f"#{self.preview_name} label {{ color: {foreground}; }}\n"
+            f"#{self.preview_name} .terminal-preview-accent {{ color: {accent}; font-weight: 800; }}"
+        ).encode())
+
+    def load_desktop_theme(self, *_):
+        palette = load_palette()
+        self.color_mode.set_selected(0)
+        self._set_color_buttons(palette.bg, palette.fg, palette.accent)
+        for button in self.color_buttons.values():
+            button.set_sensitive(False)
+        self._refresh_preview()
+        self.status.set_text("Current Yakushi desktop palette loaded. Apply terminal colors to enable automatic FOLLOW mode.")
+
+    def apply_colors(self, *_):
+        follow = self.color_mode.get_selected() == 0
+        if follow:
+            palette = load_palette()
+            value = KittyColorState(
+                mode="follow",
+                background=palette.bg,
+                foreground=palette.fg,
+                accent=palette.accent,
+            )
+            self._set_color_buttons(value.background, value.foreground, value.accent)
+        else:
+            value = KittyColorState(
+                mode="custom",
+                background=self._button_hex(self.color_buttons["background"]),
+                foreground=self._button_hex(self.color_buttons["foreground"]),
+                accent=self._button_hex(self.color_buttons["accent"]),
+            )
+        ok, message = kitty_colors_save(value)
+        self._refresh_preview()
+        if ok:
+            self.status.set_text(message + " Running Kitty instances were asked to reload; new Kitty windows use this palette too.")
+        else:
+            self.status.set_text("ERROR: " + message)
 
     def apply(self, *_):
         value = KittyState(
@@ -2009,6 +2322,236 @@ class TerminalPage(Page):
         )
         _, message = kitty_save(value)
         self.status.set_text(message)
+
+
+class FastfetchPage(Page):
+    def __init__(self):
+        super().__init__()
+
+        current = fastfetch_load()
+        self.append(page_header(
+            "03",
+            "Apps & Keys",
+            "Fastfetch",
+            "Control startup behavior, paste your own ASCII art, toggle individual information modules, or edit the complete Fastfetch JSONC configuration."
+        ))
+
+        startup = card(
+            "// STARTUP",
+            "Turn Fastfetch on or off when a new terminal shell starts. On Fish, Yakushi normalizes legacy startup calls and owns one managed greeting: OFF means zero Fastfetch runs, ON means exactly one. Manual Fastfetch use is never disabled."
+        )
+        self.autorun = Gtk.Switch(active=current.auto_run)
+        startup.append(setting_row(
+            "Run Fastfetch in new terminals",
+            self.autorun,
+            f"Detected shell: {current.shell}."
+        ))
+        startup_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        startup_actions.append(action_button("APPLY AUTO-RUN", self.apply_autorun, primary=True))
+        startup_actions.append(action_button("PREVIEW IN KITTY", self.preview))
+        startup.append(startup_actions)
+        if current.external_autorun:
+            note = Gtk.Label(
+                label="Existing Fastfetch startup call detected in Fish. APPLY AUTO-RUN will normalize it into Yakushi's single managed startup source so duplicate Fastfetch output cannot stack.",
+                xalign=0,
+            )
+            note.set_wrap(True)
+            note.add_css_class("muted")
+            startup.append(note)
+        self.append(startup)
+
+        ascii_panel = card(
+            "// ASCII ART",
+            "Paste any text/ASCII art here. SAVE ASCII + PREVIEW keeps your source clean in ~/.config/fastfetch/logo.txt, generates a color-aware render copy, and opens it in Kitty immediately. The logo follows Terminal Studio accent color."
+        )
+        self.logo_view = Gtk.TextView()
+        self.logo_view.set_monospace(True)
+        self.logo_view.set_wrap_mode(Gtk.WrapMode.NONE)
+        self.logo_view.add_css_class("code-editor")
+        self.logo_view.get_buffer().set_text(current.logo)
+        logo_scroll = Gtk.ScrolledWindow()
+        logo_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        logo_scroll.set_min_content_height(230)
+        logo_scroll.set_child(self.logo_view)
+        ascii_panel.append(logo_scroll)
+
+        self.logo_left = spin(current.logo_padding_left, 0, 40)
+        self.logo_top = spin(current.logo_padding_top, 0, 20)
+        position_grid = Gtk.Grid(column_spacing=18, row_spacing=8)
+        position_grid.set_column_homogeneous(True)
+        position_grid.attach(setting_row("Horizontal offset", self.logo_left, "Moves the ASCII logo to the right."), 0, 0, 1, 1)
+        position_grid.attach(setting_row("Vertical offset", self.logo_top, "Adds empty rows above the ASCII logo."), 1, 0, 1, 1)
+        ascii_panel.append(position_grid)
+
+        ascii_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        ascii_actions.append(action_button("SAVE ASCII + PREVIEW", self.save_logo, primary=True))
+        ascii_actions.append(action_button("APPLY POSITION + PREVIEW", self.apply_logo_position))
+        ascii_actions.append(action_button("RELOAD ASCII", self.reload_logo))
+        ascii_panel.append(ascii_actions)
+        self.append(ascii_panel)
+
+        modules_panel = card(
+            "// MODULES",
+            "Hide information you do not care about without deleting the rest of your config. Disabled modules remember their position, so turning them back on does not dump them at the bottom. For example, disable Window manager / Hyprland to remove the Hyprland version line. Existing custom module objects are preserved and restored when possible."
+        )
+        self.module_switches = {}
+        module_grid = Gtk.Grid(column_spacing=18, row_spacing=8)
+        module_grid.set_column_homogeneous(True)
+        for index, (module_type, label) in enumerate(FASTFETCH_COMMON_MODULES):
+            switch = Gtk.Switch(active=bool(current.modules.get(module_type, False)))
+            switch.set_halign(Gtk.Align.END)
+            self.module_switches[module_type] = switch
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row.add_css_class("fastfetch-module")
+            title = Gtk.Label(label=label, xalign=0)
+            title.set_hexpand(True)
+            row.append(title)
+            row.append(switch)
+            module_grid.attach(row, index % 2, index // 2, 1, 1)
+        modules_panel.append(module_grid)
+        modules_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        modules_actions.append(action_button("APPLY MODULES + PREVIEW", self.apply_modules, primary=True))
+        modules_actions.append(action_button("RELOAD MODULES", self.reload_modules))
+        modules_actions.append(action_button("FOLLOW TERMINAL ACCENT", self.follow_terminal_accent))
+        modules_panel.append(modules_actions)
+        self.append(modules_panel)
+
+        advanced = card(
+            "// ADVANCED JSONC",
+            "Full Fastfetch control. Edit any supported Fastfetch option here. Yakushi checks JSONC syntax and asks Fastfetch to load the candidate config before replacing your current file."
+        )
+        self.config_view = Gtk.TextView()
+        self.config_view.set_monospace(True)
+        self.config_view.set_wrap_mode(Gtk.WrapMode.NONE)
+        self.config_view.add_css_class("code-editor")
+        self.config_view.get_buffer().set_text(current.config_text)
+        config_scroll = Gtk.ScrolledWindow()
+        config_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        config_scroll.set_min_content_height(330)
+        config_scroll.set_child(self.config_view)
+        advanced.append(config_scroll)
+        advanced_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        advanced_actions.append(action_button("VALIDATE + APPLY CONFIG", self.apply_config, primary=True))
+        advanced_actions.append(action_button("RELOAD CONFIG", self.reload_config))
+        advanced_actions.append(action_button("RESET SAFE DEFAULT", self.reset_config))
+        advanced_actions.append(action_button("PREVIEW IN KITTY", self.preview))
+        advanced.append(advanced_actions)
+        self.append(advanced)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.set_wrap(True)
+        self.status.add_css_class("status")
+        if not current.available:
+            self.status.set_text("Fastfetch is not installed yet. Fresh Yakushi installs include the official Arch fastfetch package.")
+        self.append(self.status)
+
+    @staticmethod
+    def _view_text(view: Gtk.TextView) -> str:
+        buffer = view.get_buffer()
+        return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+
+    def _set_view_text(self, view: Gtk.TextView, text: str):
+        view.get_buffer().set_text(text)
+
+    def apply_autorun(self, *_):
+        ok, message = set_fastfetch_autorun(self.autorun.get_active())
+        self.status.set_text(message)
+        if not ok:
+            self.autorun.set_active(fastfetch_load().auto_run)
+
+    def preview(self, *_):
+        _ok, message = preview_fastfetch()
+        self.status.set_text(message)
+
+    def save_logo(self, *_):
+        ok, message = save_fastfetch_logo(self._view_text(self.logo_view))
+        if ok:
+            state = fastfetch_load()
+            self._set_view_text(self.config_view, state.config_text)
+            _preview_ok, preview_message = preview_fastfetch()
+            message += " " + preview_message
+        self.status.set_text(message)
+
+    def apply_logo_position(self, *_):
+        ok, message = set_fastfetch_logo_padding(
+            int(self.logo_left.get_value()),
+            int(self.logo_top.get_value()),
+        )
+        if ok:
+            state = fastfetch_load()
+            self._set_view_text(self.config_view, state.config_text)
+            preview_ok, preview_message = preview_fastfetch()
+            if preview_ok:
+                message += " " + preview_message
+            else:
+                message += " Preview could not open: " + preview_message
+        self.status.set_text(message)
+
+    def reload_logo(self, *_):
+        state = fastfetch_load()
+        self._set_view_text(self.logo_view, state.logo)
+        self.logo_left.set_value(state.logo_padding_left)
+        self.logo_top.set_value(state.logo_padding_top)
+        self.status.set_text("ASCII art and logo position reloaded from Fastfetch config.")
+
+    def apply_modules(self, *_):
+        states = {name: switch.get_active() for name, switch in self.module_switches.items()}
+        ok, message = apply_fastfetch_modules(states)
+        if ok:
+            state = fastfetch_load()
+            self._set_view_text(self.config_view, state.config_text)
+            for name, switch in self.module_switches.items():
+                switch.set_active(bool(state.modules.get(name, False)))
+            preview_ok, preview_message = preview_fastfetch()
+            if preview_ok:
+                message += " " + preview_message
+            else:
+                message += " Preview could not open: " + preview_message
+        self.status.set_text(message)
+
+
+    def follow_terminal_accent(self, *_):
+        ok, message = sync_fastfetch_terminal_colors()
+        if ok:
+            state = fastfetch_load()
+            self._set_view_text(self.config_view, state.config_text)
+            preview_ok, preview_message = preview_fastfetch()
+            if preview_ok:
+                message += " " + preview_message
+        self.status.set_text(message)
+
+    def reload_modules(self, *_):
+        state = fastfetch_load()
+        for name, switch in self.module_switches.items():
+            switch.set_active(bool(state.modules.get(name, False)))
+        self.status.set_text("Module states reloaded from Fastfetch config.")
+
+    def apply_config(self, *_):
+        ok, message = save_fastfetch_config(self._view_text(self.config_view))
+        if ok:
+            self.reload_modules()
+            self.status.set_text(message)
+        else:
+            self.status.set_text(message)
+
+    def reset_config(self, *_):
+        ok, message = reset_fastfetch_config()
+        if ok:
+            state = fastfetch_load()
+            self._set_view_text(self.config_view, state.config_text)
+            self._set_view_text(self.logo_view, state.logo)
+            self.logo_left.set_value(state.logo_padding_left)
+            self.logo_top.set_value(state.logo_padding_top)
+            for name, switch in self.module_switches.items():
+                switch.set_active(bool(state.modules.get(name, False)))
+        self.status.set_text(message if ok else "ERROR: " + message)
+
+    def reload_config(self, *_):
+        state = fastfetch_load()
+        self._set_view_text(self.config_view, state.config_text)
+        for name, switch in self.module_switches.items():
+            switch.set_active(bool(state.modules.get(name, False)))
+        self.status.set_text("Fastfetch JSONC reloaded from disk.")
 
 
 class NautilusPage(Page):

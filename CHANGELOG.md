@@ -1,5 +1,101 @@
 # Changelog
 
+## v1.2.12
+
+- Fixed installed `doctor.sh` integrity checks by automatically selecting installed-layout smoke testing.
+- Added current desktop and Control Deck showcase screenshots to the public README/release bundle.
+- Release artifacts are now checked for stray Python `__pycache__` / `.pyc` files.
+- Installed copies keep the screenshot assets referenced by their bundled README.
+- Updated Fastfetch startup documentation to match the CachyOS/vendor-safe single `fish_greeting` override.
+- Final public stability/polish pass over the v1.2.x release line.
+
+## v1.2.11
+
+- Fixed Fastfetch OFF/ON on CachyOS and other Fish setups that define `fish_greeting` from a vendor file.
+- Yakushi now shadows vendor `fish_greeting` safely from the end of the user `config.fish`; package-owned files under `/usr/share` are never modified.
+- OFF is normalized to zero Fastfetch runs and ON to exactly one run in new Fish terminals.
+
+## 1.2.11
+
+- Fixed duplicate Fastfetch output when startup was enabled.
+- Fastfetch OFF now targets zero startup runs; ON targets exactly one managed Fish greeting run.
+- Fish startup source chains are normalized so legacy dotfiles calls do not stack with Yakushi.
+- Added startup invocation probing for Fish autorun verification.
+
+## 1.2.9
+
+- Repairs a zero-length Fastfetch `config.jsonc` automatically instead of letting terminal startup fail.
+- Adds a `RESET SAFE DEFAULT` action to Fastfetch Studio while preserving the user ASCII source.
+- Adds Window Frame & Shadow controls to Appearance.
+- Window borders can follow the Yakushi theme or use custom active/inactive colors.
+- Drop shadows expose color, opacity, size, falloff, X/Y offset, and scale controls.
+- FOLLOW mode re-synchronizes window border/shadow colors whenever Theme Studio or Auto Color changes the desktop palette.
+
+## 1.2.8
+
+- Fixed Fastfetch startup OFF on Fish setups that launch Fastfetch from `fish_greeting.fish`, not only `config.fish` or `conf.d`.
+- Fastfetch startup OFF now disables common standalone/guarded startup calls while preserving the original line for exact restoration when turned back ON.
+- Added Fastfetch ASCII **Horizontal offset** and **Vertical offset** controls using Fastfetch logo left/top padding.
+- Saving or recoloring a Yakushi ASCII logo now preserves its position instead of resetting padding.
+- Added one-click **APPLY POSITION + PREVIEW** for immediate placement tuning.
+
+## 1.2.7
+
+- Fixed custom Fastfetch ASCII logos turning white by switching Yakushi-managed text logos from `file-raw` to Fastfetch's color-aware `file` mode.
+- Added generated `yakushi-logo.txt` rendering with Fastfetch's supported `$1` color placeholder while keeping the user's pasted `logo.txt` clean.
+- Fastfetch ASCII logo, title and keys now follow Terminal Studio accent through Kitty ANSI color1.
+- Fixed module toggles appending re-enabled entries to the end of the Fastfetch module list.
+- Disabled modules now remember neighboring modules and restore to a stable position.
+- Added migration repair for information modules that v1.2.6 had already appended after the final color palette.
+
+## 1.2.6
+
+- Fixed Terminal Studio color application by writing a concrete managed color block at the end of the active Kitty config.
+- Added active Kitty config detection for KITTY_CONFIG_DIRECTORY and explicit `--config` launches.
+- Kitty config reads now respect last-assignment-wins semantics.
+- Fixed Fastfetch module toggles with write-back verification and a canonical JSON fallback for unusual JSONC layouts.
+- Fastfetch module Apply now opens a fresh Kitty preview automatically.
+- Yakushi-managed Fish autorun now uses the exact Fastfetch config path.
+
+
+## 1.2.5
+
+- Fixed Terminal Color Studio by moving Yakushi colors into a dedicated `~/.config/kitty/yakushi-colors.conf` override imported last, so existing Kitty themes can no longer silently override the selected palette.
+- Terminal color changes now request an immediate Kitty config reload when possible.
+- Added a dedicated **Fastfetch Studio** under `03 // APPS & KEYS`.
+- Added Fastfetch terminal-startup ON/OFF controls for Fish, Bash and Zsh without replacing shell configs.
+- Added pasteable custom ASCII art with `SAVE ASCII + PREVIEW`, backed by `~/.config/fastfetch/logo.txt` and Fastfetch `file-raw` logo mode.
+- Added per-module visibility switches, including Window manager / Hyprland, OS, Kernel, CPU, GPU, Memory, Disk and more.
+- Disabled modules preserve their previous custom object where possible so re-enabling restores custom formatting.
+- Added **FOLLOW TERMINAL ACCENT** to route Fastfetch key/title colors through Kitty ANSI color1.
+- Added a complete Advanced JSONC editor with validation, backups and one-click Kitty preview.
+- Fresh installs now include the official Arch `fastfetch` package and create a Yakushi Fastfetch config only when the user does not already have one.
+
+## 1.2.4
+
+- Added **Terminal Color Studio** to the Kitty page.
+- Added **FOLLOW YAKUSHI THEME** mode for automatic Kitty synchronization with Theme Studio and Auto Color.
+- Added **CUSTOM** mode with independent background, foreground and accent color pickers.
+- Accent now generates a cohesive 16-color ANSI palette so Fastfetch, prompts and CLI colors follow the selected terminal tone.
+- Added a live Terminal color preview.
+- Existing Kitty opacity, font size and padding controls remain independent from color management.
+- Fresh installs start with a Yakushi-matched Kitty palette in FOLLOW mode; existing Kitty configs are preserved until the user explicitly applies terminal colors.
+
+## 1.2.3
+
+- Replaced SDDM `pkexec` authorization with an explicit Kitty + `sudo` terminal prompt.
+- Fixes invisible administrator prompts on minimal Hyprland sessions without a graphical Polkit authentication agent.
+- SDDM install/update and restore no longer wait on Polkit at all.
+- Login Screen status text now tells the user that a terminal authorization prompt is being opened.
+- Existing desktop, Waybar, Rofi, Hyprlock, wallpaper, and SDDM settings remain untouched by the hotfix.
+
+## 1.2.2
+
+- Fixed the Control Deck becoming unresponsive while `INSTALL / UPDATE SDDM` or SDDM restore waits for administrator authorization.
+- SDDM install/restore now runs off the GTK main thread and updates status safely through the GLib main loop.
+- SDDM action buttons are temporarily disabled while a privileged operation is running to prevent duplicate jobs.
+- Kitty sudo fallback is now launched detached instead of being misclassified as failed after a short subprocess timeout.
+
 ## 1.2.1
 
 - Reset the main content scroll position to the top whenever a sidebar page is opened.

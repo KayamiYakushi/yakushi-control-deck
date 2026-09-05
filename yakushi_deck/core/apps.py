@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from .io import atomic_write, restore, run
 from .history import record
-from .paths import HYPR_COLORS_RASI, KITTY_CONFIG, ROFI_CONFIG, ROFI_OPACITY_OVERRIDE, WAYBAR_CONFIG, WAYBAR_STYLE
+from .paths import HYPR_COLORS_RASI, KITTY_CONFIG, KITTY_COLOR_OVERRIDE, ROFI_CONFIG, ROFI_OPACITY_OVERRIDE, WAYBAR_CONFIG, WAYBAR_STYLE
 
 
 # ---------- Kitty ----------
@@ -17,13 +19,73 @@ class KittyState:
     padding: int
 
 
+@dataclass
+class KittyColorState:
+    mode: str = "custom"
+    background: str = "#0e0c0d"
+    foreground: str = "#e8a29a"
+    accent: str = "#e8a29a"
+
+
 def _kitty_value(text: str, key: str, default: str) -> str:
-    match = re.search(rf'(?m)^\s*{re.escape(key)}\s+(.+?)\s*$', text)
-    return match.group(1).strip() if match else default
+    # Kitty uses last assignment wins semantics, including values loaded after
+    # theme includes. Mirror that behavior when reading the effective file.
+    matches = re.findall(rf'(?m)^\s*{re.escape(key)}\s+(.+?)\s*$', text)
+    return matches[-1].strip() if matches else default
+
+
+def _active_kitty_config() -> Path:
+    """Best-effort detection of the config file used by running Kitty instances."""
+    env_dir = os.environ.get("KITTY_CONFIG_DIRECTORY")
+    if env_dir:
+        return Path(os.path.expandvars(os.path.expanduser(env_dir))) / "kitty.conf"
+
+    proc_root = Path("/proc")
+    if proc_root.exists():
+        for proc in proc_root.iterdir():
+            if not proc.name.isdigit():
+                continue
+            try:
+                comm = (proc / "comm").read_text().strip()
+                if comm != "kitty":
+                    continue
+                raw = (proc / "cmdline").read_bytes().split(b"\0")
+                args = [item.decode(errors="ignore") for item in raw if item]
+                for index, arg in enumerate(args):
+                    if arg.startswith("--config="):
+                        value = arg.split("=", 1)[1]
+                        if value and value.upper() != "NONE":
+                            return Path(os.path.expandvars(os.path.expanduser(value)))
+                    if arg in {"--config", "-c"} and index + 1 < len(args):
+                        value = args[index + 1]
+                        if value and value.upper() != "NONE":
+                            return Path(os.path.expandvars(os.path.expanduser(value)))
+                try:
+                    environ = (proc / "environ").read_bytes().split(b"\0")
+                    for item in environ:
+                        if item.startswith(b"KITTY_CONFIG_DIRECTORY="):
+                            value = item.split(b"=", 1)[1].decode(errors="ignore")
+                            if value:
+                                return Path(os.path.expandvars(os.path.expanduser(value))) / "kitty.conf"
+                except Exception:
+                    pass
+            except Exception:
+                continue
+    return KITTY_CONFIG
+
+
+def _kitty_override_for(config: Path) -> Path:
+    return config.parent / "yakushi-colors.conf"
+
+
+def _write_preserving_symlink(path: Path, content: str) -> None:
+    target = path.resolve() if path.is_symlink() else path
+    atomic_write(target, content)
 
 
 def kitty_load() -> KittyState:
-    text = KITTY_CONFIG.read_text() if KITTY_CONFIG.exists() else ""
+    config = _active_kitty_config()
+    text = config.read_text() if config.exists() else ""
 
     try:
         font_size = float(_kitty_value(text, "font_size", "12"))
@@ -53,16 +115,231 @@ def _kitty_set(text: str, key: str, value: str) -> str:
     return text + f"{key} {value}\n"
 
 
+def _normalize_hex(value: str, default: str) -> str:
+    match = re.search(r'#[0-9a-fA-F]{6}', value or '')
+    return match.group(0).lower() if match else default
+
+
+def _kitty_color_mode(text: str) -> str:
+    match = re.search(
+        r'(?mi)^\s*#\s*YAKUSHI KITTY COLOR MODE\s*:\s*(follow|custom)\s*$',
+        text,
+    )
+    return match.group(1).lower() if match else "custom"
+
+
+def _kitty_set_color_mode(text: str, mode: str) -> str:
+    mode = "follow" if str(mode).lower() == "follow" else "custom"
+    line = f"# YAKUSHI KITTY COLOR MODE: {mode}"
+    pattern = r'(?mi)^\s*#\s*YAKUSHI KITTY COLOR MODE\s*:\s*(?:follow|custom)\s*$'
+    if re.search(pattern, text):
+        return re.sub(pattern, line, text, count=1)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    return text + line + "\n"
+
+
+def _blend_hex(first: str, second: str, amount: float) -> str:
+    amount = max(0.0, min(1.0, float(amount)))
+    a = _normalize_hex(first, "#000000").lstrip('#')
+    b = _normalize_hex(second, "#ffffff").lstrip('#')
+    av = [int(a[i:i + 2], 16) for i in (0, 2, 4)]
+    bv = [int(b[i:i + 2], 16) for i in (0, 2, 4)]
+    out = [round(x + (y - x) * amount) for x, y in zip(av, bv)]
+    return "#" + "".join(f"{value:02x}" for value in out)
+
+
+def _contrast_color(background: str) -> str:
+    value = _normalize_hex(background, "#000000").lstrip('#')
+    r, g, b = [int(value[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+    luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return "#171313" if luminance > 0.56 else "#f5eeee"
+
+
+def _kitty_color_properties(background: str, foreground: str, accent: str) -> dict[str, str]:
+    background = _normalize_hex(background, "#0e0c0d")
+    foreground = _normalize_hex(foreground, "#e8a29a")
+    accent = _normalize_hex(accent, "#e8a29a")
+    selected = _contrast_color(accent)
+
+    # Keep the ANSI palette inside the same tonal family. This is what makes
+    # Fastfetch, prompts and CLI color output follow the selected Yakushi tone
+    # instead of remaining stuck on an older red/pink palette.
+    ansi = {
+        "color0": background,
+        "color1": accent,
+        "color2": _blend_hex(accent, foreground, 0.18),
+        "color3": _blend_hex(accent, foreground, 0.34),
+        "color4": _blend_hex(accent, foreground, 0.50),
+        "color5": _blend_hex(accent, foreground, 0.27),
+        "color6": _blend_hex(accent, foreground, 0.43),
+        "color7": foreground,
+        "color8": _blend_hex(background, foreground, 0.34),
+        "color9": _blend_hex(accent, foreground, 0.16),
+        "color10": _blend_hex(accent, foreground, 0.30),
+        "color11": _blend_hex(accent, foreground, 0.45),
+        "color12": _blend_hex(accent, foreground, 0.60),
+        "color13": _blend_hex(accent, foreground, 0.38),
+        "color14": _blend_hex(accent, foreground, 0.54),
+        "color15": _blend_hex(foreground, "#ffffff" if selected == "#171313" else foreground, 0.16),
+    }
+    return {
+        "background": background,
+        "foreground": foreground,
+        "cursor": accent,
+        "cursor_text_color": background,
+        "selection_background": accent,
+        "selection_foreground": selected,
+        "url_color": accent,
+        "active_border_color": accent,
+        "inactive_border_color": _blend_hex(background, foreground, 0.24),
+        "tab_bar_background": background,
+        "active_tab_background": accent,
+        "active_tab_foreground": selected,
+        "inactive_tab_background": _blend_hex(background, foreground, 0.10),
+        "inactive_tab_foreground": foreground,
+        **ansi,
+    }
+
+
+def _write_kitty_color_block(config: Path, override: Path, value: "KittyColorState") -> None:
+    """Write a final concrete color block so no earlier theme include can win."""
+    background = _normalize_hex(value.background, "#0e0c0d")
+    foreground = _normalize_hex(value.foreground, "#e8a29a")
+    accent = _normalize_hex(value.accent, foreground)
+    mode = "follow" if str(value.mode).lower() == "follow" else "custom"
+    props = _kitty_color_properties(background, foreground, accent)
+
+    override_text = f"# Generated by Yakushi Control Deck.\n# YAKUSHI KITTY COLOR MODE: {mode}\n"
+    override_text += "".join(f"{key} {color}\n" for key, color in props.items())
+    override.parent.mkdir(parents=True, exist_ok=True)
+    _write_preserving_symlink(override, override_text)
+
+    text = config.read_text() if config.exists() else ""
+    # Remove older include-based integration and any previous managed block.
+    text = re.sub(
+        r"(?ms)^# >>> YAKUSHI TERMINAL COLORS >>>\n.*?^# <<< YAKUSHI TERMINAL COLORS <<<\n?",
+        "",
+        text,
+    )
+    kept = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if re.fullmatch(r"include\s+(?:\./)?yakushi-colors\.conf", stripped, flags=re.I):
+            continue
+        if stripped == "# YAKUSHI KITTY COLORS - KEEP THIS INCLUDE LAST":
+            continue
+        kept.append(line)
+    text = "\n".join(kept).rstrip()
+    if text:
+        text += "\n\n"
+    text += f"# >>> YAKUSHI TERMINAL COLORS >>>\n# YAKUSHI KITTY COLOR MODE: {mode}\n"
+    text += "".join(f"{key} {color}\n" for key, color in props.items())
+    text += "# <<< YAKUSHI TERMINAL COLORS <<<\n"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    _write_preserving_symlink(config, text)
+
+def _reload_kitty_config() -> None:
+    # Kitty supports SIGUSR1 config reload. This makes the current window pick
+    # up colors immediately when possible, while new windows always get them.
+    run(["pkill", "-USR1", "-x", "kitty"], timeout=2.0)
+
+
+def kitty_colors_load() -> KittyColorState:
+    config = _active_kitty_config()
+    override = _kitty_override_for(config)
+    # The managed block in kitty.conf is authoritative. The override file remains
+    # a portable representation for diagnostics and migration.
+    config_text = config.read_text() if config.exists() else ""
+    if "# >>> YAKUSHI TERMINAL COLORS >>>" in config_text:
+        text = config_text
+    elif override.exists():
+        text = override.read_text()
+    else:
+        text = config_text
+    background = _normalize_hex(_kitty_value(text, "background", "#0e0c0d"), "#0e0c0d")
+    foreground = _normalize_hex(_kitty_value(text, "foreground", "#e8a29a"), "#e8a29a")
+    accent_raw = _kitty_value(text, "cursor", "") or _kitty_value(text, "color1", "") or foreground
+    accent = _normalize_hex(accent_raw, foreground)
+    return KittyColorState(
+        mode=_kitty_color_mode(text),
+        background=background,
+        foreground=foreground,
+        accent=accent,
+    )
+
+
+def _kitty_write_colors(value: KittyColorState, *, history: bool) -> tuple[bool, str]:
+    background = _normalize_hex(value.background, "#0e0c0d")
+    foreground = _normalize_hex(value.foreground, "#e8a29a")
+    accent = _normalize_hex(value.accent, foreground)
+    mode = "follow" if str(value.mode).lower() == "follow" else "custom"
+
+    override = f"# Generated by Yakushi Control Deck.\n# YAKUSHI KITTY COLOR MODE: {mode}\n"
+    for key, color in _kitty_color_properties(background, foreground, accent).items():
+        override += f"{key} {color}\n"
+
+    config = _active_kitty_config()
+    override_path = _kitty_override_for(config)
+    if history:
+        record("Kitty terminal colors", files=[config, override_path])
+    _write_kitty_color_block(config, override_path, KittyColorState(mode, background, foreground, accent))
+    _reload_kitty_config()
+
+    # Read back the final managed block. This catches write/path problems instead
+    # of reporting success while Kitty is still using a different file.
+    verify = config.read_text() if config.exists() else ""
+    expected = {"background": background, "foreground": foreground, "cursor": accent}
+    missing = [key for key, color in expected.items() if not re.search(rf"(?m)^\s*{key}\s+{re.escape(color)}\s*$", verify, flags=re.I)]
+    if missing:
+        return False, "Kitty color write verification failed for: " + ", ".join(missing)
+
+    base = (
+        "Kitty colors now follow the Yakushi desktop palette."
+        if mode == "follow"
+        else "Custom Kitty colors applied."
+    )
+    return True, f"{base} Active config: {config}"
+
+
+def kitty_colors_save(value: KittyColorState) -> tuple[bool, str]:
+    return _kitty_write_colors(value, history=True)
+
+
+def kitty_sync_theme(palette) -> tuple[bool, str]:
+    """Refresh Kitty colors only when Terminal Studio is in FOLLOW mode."""
+    current = kitty_colors_load()
+    if current.mode != "follow":
+        return True, "Kitty color mode is custom; desktop theme sync skipped."
+
+    def pick(name: str, default: str) -> str:
+        if isinstance(palette, dict):
+            return str(palette.get(name, default))
+        return str(getattr(palette, name, default))
+
+    return _kitty_write_colors(
+        KittyColorState(
+            mode="follow",
+            background=pick("bg", current.background),
+            foreground=pick("fg", current.foreground),
+            accent=pick("accent", current.accent),
+        ),
+        history=False,
+    )
+
+
 def kitty_save(value: KittyState) -> tuple[bool, str]:
-    text = KITTY_CONFIG.read_text() if KITTY_CONFIG.exists() else ""
+    config = _active_kitty_config()
+    text = config.read_text() if config.exists() else ""
     text = _kitty_set(text, "font_size", f"{value.font_size:.1f}")
     text = _kitty_set(text, "background_opacity", f"{value.opacity:.2f}")
     text = _kitty_set(text, "window_padding_width", str(value.padding))
     text = _kitty_set(text, "dynamic_background_opacity", "yes")
 
-    record("Kitty settings", files=[KITTY_CONFIG])
-    atomic_write(KITTY_CONFIG, text)
-    return True, "Kitty configuration updated."
+    record("Kitty settings", files=[config])
+    _write_preserving_symlink(config, text)
+    _reload_kitty_config()
+    return True, f"Kitty configuration updated: {config}"
 
 
 # ---------- Rofi ----------

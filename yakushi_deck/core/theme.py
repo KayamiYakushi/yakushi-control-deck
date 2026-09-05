@@ -4,13 +4,16 @@ import re
 from dataclasses import dataclass
 
 from .history import record
+from .apps import kitty_colors_load, kitty_sync_theme
 from .io import atomic_write, run
 from .paths import (
     HYPR_COLORS_CSS,
     HYPR_COLORS_RASI,
+    KITTY_CONFIG,
     ROFI_CONFIG,
     ROFI_OPACITY_OVERRIDE,
     WAYBAR_STYLE,
+    WINDOW_FRAME_STATE,
 )
 
 
@@ -359,7 +362,11 @@ def save(palette: Palette) -> tuple[bool, str]:
     rofi_override = _rofi_concrete_override(values["bg"], rofi_opacity)
     waybar = _patch_waybar(waybar_original) if waybar_original else waybar_original
 
+    kitty_follows_theme = KITTY_CONFIG.exists() and kitty_colors_load().mode == "follow"
+
     files = [HYPR_COLORS_CSS, HYPR_COLORS_RASI]
+    if kitty_follows_theme:
+        files.append(KITTY_CONFIG)
     if ROFI_CONFIG.exists():
         files.append(ROFI_CONFIG)
     if ROFI_OPACITY_OVERRIDE.exists():
@@ -388,6 +395,19 @@ def save(palette: Palette) -> tuple[bool, str]:
                 atomic_write(WAYBAR_STYLE, waybar_original)
             return False, "Rofi rejected the tonal palette. The previous theme was restored."
 
+    if kitty_follows_theme:
+        kitty_sync_theme(values)
+
+    frame_note = ""
+    try:
+        from .frame import sync_follow as sync_window_frame_follow
+        frame_ok, _frame_message = sync_window_frame_follow(values)
+        if frame_ok and WINDOW_FRAME_STATE.exists():
+            frame_note = " Window borders synchronized."
+    except Exception:
+        frame_note = ""
+
     run(["pkill", "-x", "waybar"], timeout=2.0)
     run(["sh", "-lc", "nohup waybar >/tmp/yakushi-waybar.log 2>&1 &"], timeout=2.0)
-    return True, f"Tonal desktop palette applied. Foreground {values['fg']} now matches the preset preview."
+    kitty_note = " Kitty colors synchronized." if kitty_follows_theme else ""
+    return True, f"Tonal desktop palette applied. Foreground {values['fg']} now matches the preset preview.{kitty_note}{frame_note}"
