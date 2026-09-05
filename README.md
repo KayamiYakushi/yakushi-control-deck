@@ -120,6 +120,14 @@ When missing, the installer installs these from official Arch repositories: Pyth
 - Waybar log: `/tmp/yakushi-waybar.log`
 - hyprpaper log: `/tmp/yakushi-hyprpaper.log`
 
+## v1.2.14 power-menu alignment
+
+The five-action Rofi power menu now uses one consistent Nerd Font icon family, fixing the uneven vertical/baseline alignment between Lock, Suspend, Logout, Reboot and Shutdown without changing the menu layout.
+
+## v1.2.13 power-menu cleanup
+
+The Waybar power menu is intentionally focused on session and power actions only. The obsolete legacy theme/colorizer entry has been removed; appearance belongs in Theme Studio and Auto Color.
+
 ## v1.2.12 stability polish
 
 - Installed diagnostics now automatically use installed-layout smoke testing, avoiding false package-integrity failures after a normal install.

@@ -25,7 +25,8 @@ common_required=(
   yakushi_deck/core/lockscreen.py yakushi_deck/core/sddm_root.py
   yakushi_deck/core/autocolor.py yakushi_deck/core/nautilus.py yakushi_deck/core/fastfetch.py yakushi_deck/core/frame.py
   integrations/waybar/config.jsonc integrations/waybar/style.css
-  integrations/rofi/config.rasi integrations/rofi/yakushi-opacity.rasi
+  integrations/rofi/config.rasi integrations/rofi/yakushi-opacity.rasi integrations/rofi/powermenu.rasi integrations/rofi/scripts/powermenu.sh
+  integrations/rofi/icons/power/lock.svg integrations/rofi/icons/power/suspend.svg integrations/rofi/icons/power/logout.svg integrations/rofi/icons/power/reboot.svg integrations/rofi/icons/power/shutdown.svg
   integrations/fastfetch/config.jsonc integrations/fastfetch/logo.txt integrations/fastfetch/yakushi-logo.txt
   integrations/sddm/yakushi/Main.qml integrations/sddm/yakushi/metadata.desktop
   integrations/sddm/yakushi/theme.conf

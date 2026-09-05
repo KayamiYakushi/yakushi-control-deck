@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.2.14
+
+- Fixed optical misalignment in the five-action Rofi power menu.
+- Replaced mixed icon families with one Material Design Nerd Font family so Lock, Suspend, Logout, Reboot, and Shutdown share consistent font metrics.
+- Normalized icon sizing and element text padding while preserving the existing Yakushi glass layout.
+
+## v1.2.13
+
+- Removed the obsolete power-menu theme/colorizer action.
+- Normalized the Waybar power menu to five actions: Lock, Suspend, Logout, Reboot, Shutdown.
+- Added a dedicated horizontal Rofi power-menu theme that follows Yakushi colors and opacity.
+- Fresh installs back up and install the dedicated power-menu theme safely.
+
 ## v1.2.12
 
 - Fixed installed `doctor.sh` integrity checks by automatically selecting installed-layout smoke testing.
@@ -171,3 +184,8 @@
 ## 1.0.0 — 2026-08-31
 
 First public release. Includes Control Deck, bundled Waybar/Rofi integration, display/input/power controls, tonal themes, wallpapers, typography, Bar Studio, Rofi Studio, Kitty controls, history and backups.
+
+## v1.2.15
+- Reworked the Rofi power menu to use fixed-size SVG icons instead of font glyphs.
+- Removes Nerd Font baseline/em-box drift from Lock, Suspend, Logout, Reboot, and Shutdown.
+- Power-menu selection now uses a dark hover surface with an accent border so icon tint remains consistent.

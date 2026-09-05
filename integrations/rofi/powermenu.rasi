@@ -1,0 +1,59 @@
+@import "../hypr/colors.rasi"
+
+* {
+    background-color: transparent;
+    text-color: @yak-fg;
+}
+
+window {
+    transparency: "real";
+    background-color: @yak-rofi-bg;
+    border: 2px;
+    border-color: @yak-border;
+    border-radius: 18px;
+    width: 900px;
+    padding: 22px;
+}
+
+mainbox {
+    background-color: transparent;
+    children: [ listview ];
+}
+
+listview {
+    background-color: transparent;
+    lines: 1;
+    columns: 5;
+    fixed-columns: true;
+    spacing: 14px;
+    cycle: true;
+}
+
+element {
+    background-color: @yak-surface;
+    border: 1px;
+    border-color: @yak-border;
+    border-radius: 12px;
+    padding: 25px 18px;
+    orientation: vertical;
+    children: [ element-icon ];
+}
+
+element selected {
+    background-color: @yak-hover;
+    border-color: @yak-accent;
+}
+
+element-icon {
+    background-color: transparent;
+    size: 40px;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    tint: @yak-fg;
+}
+
+element-text {
+    enabled: false;
+}
+
+@import "yakushi-opacity.rasi"
