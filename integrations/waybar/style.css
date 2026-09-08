@@ -4,7 +4,6 @@ window#waybar { background-color: transparent; color: @fg; }
 #custom-launcher,
 #custom-cpu_temp,
 #custom-gpu_temp,
-#custom-governor,
 #custom-power,
 #workspaces,
 #window,
