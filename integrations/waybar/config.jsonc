@@ -20,7 +20,6 @@
         "cpu",
         "custom/cpu_temp",
         "custom/gpu_temp",
-        "custom/governor",
         "tray",
         "clock",
         "clock#simpleclock",
@@ -84,13 +83,6 @@
         "exec": "$HOME/.config/waybar/scripts/temperature.sh gpu",
         "interval": 2,
         "format": "󰢮 {}"
-    },
-    "custom/governor": {
-        "exec": "$HOME/.config/waybar/scripts/power-mode.sh",
-        "interval": 2,
-        "on-click": "$HOME/.local/bin/yakushi-deck",
-        "tooltip": true,
-        "tooltip-format": "Open Yakushi Power Management"
     },
     "tray": {
         "show-passive-items": true,
