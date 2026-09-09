@@ -4,13 +4,14 @@ from pathlib import Path
 
 import gi
 gi.require_version("Gtk", "4.0")
+gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gtk, GLib
 
 from .core.paths import BACKUPS, CONFIG
 from .core.history import revert_latest
 from .core.theme import repair_rasi_compatibility
 from .core.windowing import ensure_control_deck_floating
-from .ui.common import install_css, open_folder, open_uri
+from .ui.common import install_css, open_folder
 from .ui.pages import (
     AppearancePage,
     DisplaysPage,
@@ -40,6 +41,10 @@ class Window(Gtk.ApplicationWindow):
         )
         self.add_css_class("yakushi-window")
         self.set_size_request(980, 700)
+        # The deck is intentionally a fixed floating control surface.  Child
+        # widgets must scroll/shrink inside it instead of teaching GTK a larger
+        # preferred window size after runtime content changes.
+        self.set_resizable(False)
 
         overlay = Gtk.Overlay()
         self.set_child(overlay)
@@ -66,7 +71,9 @@ class Window(Gtk.ApplicationWindow):
 
         sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         sidebar.add_css_class("sidebar")
-        sidebar.set_size_request(248, -1)
+        sidebar.set_size_request(224, -1)
+        sidebar.set_hexpand(False)
+        sidebar.set_halign(Gtk.Align.START)
         frame.append(sidebar)
 
         brand = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
@@ -108,6 +115,12 @@ class Window(Gtk.ApplicationWindow):
         self.stack = Gtk.Stack()
         self.stack.set_hexpand(True)
         self.stack.set_vexpand(True)
+        # Never let a hidden page's natural size dictate the whole deck.  This
+        # matters for Bar Studio's three-lane layout and wallpaper libraries.
+        if hasattr(self.stack, "set_hhomogeneous"):
+            self.stack.set_hhomogeneous(False)
+        if hasattr(self.stack, "set_vhomogeneous"):
+            self.stack.set_vhomogeneous(False)
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.stack.set_transition_duration(130)
 
@@ -196,27 +209,9 @@ class Window(Gtk.ApplicationWindow):
             first_button.add_css_class("selected")
             self.stack.set_visible_child_name("appearance")
 
-        footer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        footer.add_css_class("sidebar-footer")
-
-        status = Gtk.Label(label="YAKUSHIS FAV SONG", xalign=0)
-        status.add_css_class("footer-label")
-        footer.append(status)
-
-        barcode_button = Gtk.Button(label="▌▌ ▏▌▌▌ ▏▌ ▌▌ ▏▌▌▌▌ ▏▌")
-        barcode_button.add_css_class("barcode-button")
-        barcode_button.set_halign(Gtk.Align.FILL)
-        barcode_button.connect(
-            "clicked",
-            lambda *_: open_uri("https://open.spotify.com/track/5QKiW2Oogj7T5KoI1Wcl2u"),
-        )
-        footer.append(barcode_button)
-
-        barcode_note = Gtk.Label(label="SCAN // CHASE BY BATTA", xalign=0)
-        barcode_note.add_css_class("barcode-note")
-        footer.append(barcode_note)
-
-        sidebar.append(footer)
+        # v1.2.20: the decorative song/barcode footer was removed.
+        # It added no control value and its long barcode label could inflate the
+        # sidebar's natural width on some GTK/font combinations.
 
         main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         main.set_hexpand(True)
@@ -257,9 +252,15 @@ class Window(Gtk.ApplicationWindow):
         main.append(utility)
 
         self.content_scroll = Gtk.ScrolledWindow()
-        self.content_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        # AUTOMATIC on X is a last-resort safety valve: oversized page content
+        # scrolls inside the deck instead of resizing the toplevel window.
+        self.content_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.content_scroll.set_hexpand(True)
         self.content_scroll.set_vexpand(True)
+        if hasattr(self.content_scroll, "set_propagate_natural_width"):
+            self.content_scroll.set_propagate_natural_width(False)
+        if hasattr(self.content_scroll, "set_min_content_width"):
+            self.content_scroll.set_min_content_width(0)
         self.content_scroll.set_child(self.stack)
         main.append(self.content_scroll)
 
@@ -347,7 +348,7 @@ def main():
         .sidebar {
             background-color: #07090a;
             border-right: 1px solid #242326;
-            padding: 18px 16px 14px 16px;
+            padding: 18px 12px 14px 12px;
         }
 
         .brand-panel {
@@ -763,7 +764,7 @@ def main():
         .module-lane {
             background-color: #070809;
             border: 1px solid #29272a;
-            padding: 9px;
+            padding: 7px 8px;
         }
 
         .module-lane-header {
@@ -957,6 +958,8 @@ def main():
 
         button.wallpaper-tile {
             background: #08090a;
+            min-width: 0;
+            min-height: 0;
         }
 
         button.module-action {
@@ -1240,18 +1243,21 @@ def main():
         }
 
         .module-chip {
-            min-height: 64px;
-            padding: 7px 8px;
-        }
-
-        .module-chip .module-desc {
-            color: #696260;
-            font-size: 8px;
+            min-height: 42px;
+            padding: 5px 7px;
         }
 
         .module-handle {
-            min-width: 18px;
+            min-width: 16px;
             color: #a64d59;
+        }
+
+        .bar-setting-compact {
+            padding: 4px 0;
+        }
+
+        .bar-setting-compact .setting-name {
+            font-size: 10px;
         }
 
         button.utility-button.flat,
@@ -1361,6 +1367,134 @@ def main():
             font-family: "JetBrainsMono Nerd Font", monospace;
             font-size: 8px;
             padding: 2px 0 5px 0;
+        }
+
+
+        /* v1.2.20: compact sidebar + decorative footer removal. */
+        button.wallpaper-featured {
+            min-width: 800px;
+            min-height: 450px;
+            padding: 0;
+        }
+
+        .wallpaper-preview-missing {
+            background: #0b0d0e;
+            border: 1px solid #2b292c;
+        }
+
+        .wallpaper-label {
+            min-width: 0;
+        }
+
+        .wallpaper-name,
+        .wallpaper-folder {
+            min-width: 0;
+        }
+
+        .module-lane {
+            background: #08090a;
+            border: 1px solid #2f2c2f;
+            border-top: 2px solid #5f2d35;
+            border-radius: 4px;
+            padding: 7px;
+            min-height: 66px;
+        }
+
+        .module-lane-center {
+            border-top-color: #7b3540;
+        }
+
+        .module-lane-right {
+            border-top-color: #9d4350;
+        }
+
+        .module-lane-disabled,
+        .module-lane-disabled-wide {
+            border-top-color: #444044;
+            background: #070809;
+        }
+
+        .module-lane-header {
+            padding: 0 1px 5px 1px;
+            margin: 0 0 1px 0;
+            border-bottom: 1px solid #252326;
+        }
+
+        .module-lane-title {
+            color: #c7bdb9;
+            font-size: 9px;
+            font-weight: 850;
+            letter-spacing: 0.8px;
+        }
+
+        .module-lane-count {
+            color: #b45b68;
+            font-size: 9px;
+            font-weight: 800;
+        }
+
+        .module-chip {
+            background: #0c0e0f;
+            border: 1px solid #302d30;
+            border-radius: 4px;
+            min-height: 30px;
+            padding: 2px 6px;
+        }
+
+        .module-chip:hover {
+            background: #111315;
+            border-color: #563039;
+        }
+
+        .module-name {
+            color: #d8cfcb;
+            font-size: 9px;
+            font-weight: 650;
+        }
+
+        .module-handle {
+            min-width: 12px;
+            color: #8d4853;
+            font-size: 11px;
+        }
+
+        switch.module-switch {
+            background: #2b2a2c;
+            background-image: none;
+            border: 1px solid #454246;
+            border-radius: 999px;
+            min-width: 28px;
+            min-height: 14px;
+            padding: 1px;
+            margin: 0;
+            box-shadow: none;
+        }
+
+        switch.module-switch:hover {
+            background: #343236;
+            border-color: #5a565b;
+        }
+
+        switch.module-switch:checked {
+            background: #9d4350;
+            background-image: none;
+            border-color: #bd5968;
+        }
+
+        switch.module-switch slider {
+            background: #eee8e4;
+            border: none;
+            border-radius: 999px;
+            min-width: 10px;
+            min-height: 10px;
+            margin: 0;
+            box-shadow: none;
+        }
+
+        .module-empty {
+            color: #66605f;
+            font-size: 9px;
+            padding: 5px 2px;
         }
     """)
 

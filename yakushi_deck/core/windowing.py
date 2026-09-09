@@ -21,27 +21,31 @@ def _client_for_this_process() -> dict | None:
     except (TypeError, json.JSONDecodeError):
         return None
 
-    pid = os.getpid()
     if not isinstance(clients, list):
         return None
 
-    # PID is the strongest selector.  The class fallback covers compositors
-    # that report the GTK process through a small launcher indirection.
+    pid = os.getpid()
+
     for client in clients:
-        if int(client.get("pid", -1)) == pid:
-            return client
+        try:
+            if int(client.get("pid", -1)) == pid:
+                return client
+        except (TypeError, ValueError):
+            pass
+
     for client in clients:
         if client.get("class") == APP_CLASS or client.get("initialClass") == APP_CLASS:
             return client
+
     return None
 
 
-def _dispatch_new(expression: str) -> bool:
-    proc = run(["hyprctl", "dispatch", expression], timeout=2.0)
+def _eval(expression: str) -> bool:
+    proc = run(["hyprctl", "-r", "eval", expression], timeout=2.0)
     return proc.returncode == 0
 
 
-def _dispatch_legacy(name: str, argument: str = "") -> bool:
+def _legacy(name: str, argument: str = "") -> bool:
     command = ["hyprctl", "dispatch", name]
     if argument:
         command.append(argument)
@@ -49,13 +53,12 @@ def _dispatch_legacy(name: str, argument: str = "") -> bool:
     return proc.returncode == 0
 
 
-def ensure_control_deck_floating() -> bool:
-    """Float this exact Yakushi window on old and new Hyprland releases.
+def ensure_control_deck_floating(*, center: bool = True) -> bool:
+    """One-shot floating/resize for the Yakushi window.
 
-    Hyprland 0.55 moved dispatch expressions to Lua, while older installations
-    use the classic positional dispatcher syntax.  Try the current syntax
-    first and retain the legacy path so the deck does not force a compositor
-    upgrade just to obtain a floating settings window.
+    No persistent rules, no min/max constraints, no watchdog and no background
+    resize loop are used. Hyprland 0.55+ is handled through `hyprctl -r eval`;
+    older Hyprland releases retain the classic dispatcher fallback.
     """
     if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
         return True
@@ -69,26 +72,22 @@ def ensure_control_deck_floating() -> bool:
         return False
 
     selector = f"address:{address}"
+    escaped = selector.replace("\\", "\\\\").replace('"', '\\"')
 
-    # Hyprland >= 0.55 Lua dispatcher expression.
-    escaped = selector.replace('\\', '\\\\').replace('"', '\\"')
-    new_float = (
-        'hl.dsp.window.float({ window = "'
-        + escaped
-        + '", action = "on" })'
-    )
-    floated = _dispatch_new(new_float)
-
-    # Hyprland <= 0.54 classic dispatcher fallback.
+    floated = bool(client.get("floating"))
     if not floated:
-        floated = _dispatch_legacy("setfloating", selector)
+        floated = _eval(
+            'hl.dsp.window.float({ window = "'
+            + escaped
+            + '", action = "on" })'
+        )
+        if not floated:
+            floated = _legacy("setfloating", selector)
 
     if not floated:
         return False
 
-    # Force a predictable opening geometry every time. GTK's default size is
-    # only a hint under Wayland; Hyprland owns the final floating dimensions.
-    new_resize = (
+    resized = _eval(
         'hl.dsp.window.resize({ x = '
         + str(TARGET_WIDTH)
         + ', y = '
@@ -97,23 +96,17 @@ def ensure_control_deck_floating() -> bool:
         + escaped
         + '" })'
     )
-    resized = _dispatch_new(new_resize)
-
-    # Hyprland <= 0.54 classic dispatcher fallback.
     if not resized:
-        _dispatch_legacy(
+        _legacy(
             "resizewindowpixel",
             f"exact {TARGET_WIDTH} {TARGET_HEIGHT},{selector}",
         )
 
-    # Center after resizing so the final geometry is centered, not the old one.
-    new_center = 'hl.dsp.window.center({ window = "' + escaped + '" })'
-    if not _dispatch_new(new_center):
-        # Some 0.55 builds expose center directly under hl.dsp instead.
-        fallback_center = 'hl.dsp.center({ window = "' + escaped + '" })'
-        if not _dispatch_new(fallback_center):
-            # Old Hyprland: this targets the active floating window. The deck is
-            # normally focused immediately after present(), so this is best effort.
-            _dispatch_legacy("centerwindow", "1")
+    if center:
+        centered = _eval(
+            'hl.dsp.window.center({ window = "' + escaped + '" })'
+        )
+        if not centered:
+            _legacy("centerwindow", "1")
 
     return True

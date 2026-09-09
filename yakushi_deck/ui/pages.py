@@ -5,7 +5,7 @@ import threading
 from urllib.parse import quote
 from html import escape
 
-from gi.repository import Gtk, Gdk, GObject, GLib, Pango
+from gi.repository import Gtk, Gdk, GObject, GLib, Pango, GdkPixbuf
 
 from ..core.io import run
 from ..core.autocolor import (
@@ -79,6 +79,7 @@ from ..core.hypr import (
 )
 from ..core.theme import Palette, load as load_palette, save as save_palette
 from ..core.typography import apply as apply_typography, status as typography_status
+from ..core.windowing import ensure_control_deck_floating
 from ..core.wallpapers import (
     apply as apply_wallpaper,
     current as current_wallpaper,
@@ -452,6 +453,7 @@ class WaybarMiniPreview(Gtk.Box):
         "cpu": "CPU 18%",
         "custom/cpu_temp": "CPU 41°C",
         "custom/gpu_temp": "GPU 44°C",
+        "custom/governor": "󱐋",
         "tray": "TRAY",
         "clock": "MON 31 AUG",
         "clock#simpleclock": "06:39",
@@ -786,6 +788,11 @@ class AppearancePage(Page):
 
 
 class WallpaperPage(Page):
+    FEATURED_WIDTH = 800
+    FEATURED_HEIGHT = 450
+    TILE_WIDTH = 210
+    TILE_HEIGHT = 145
+
     def __init__(self):
         super().__init__()
 
@@ -796,37 +803,61 @@ class WallpaperPage(Page):
             "Images under ~/Documents and ~/Pictures are indexed automatically. Documents opens by default; use the folder filter to switch libraries."
         ))
 
-        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # Keep the wallpaper toolbar geometrically stable.  The image counter
+        # used to expand with its text and push Search / folder / RESCAN farther
+        # right as the indexed count gained digits.  Give the counter a bounded
+        # lane and keep all actions in one fixed right-side group instead.
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        toolbar.set_hexpand(True)
 
         self.count = Gtk.Label(xalign=0)
         self.count.add_css_class("meta")
-        self.count.set_hexpand(True)
+        self.count.set_size_request(210, -1)
+        self.count.set_hexpand(False)
+        self.count.set_halign(Gtk.Align.START)
+        self.count.set_max_width_chars(26)
+        self.count.set_ellipsize(Pango.EllipsizeMode.END)
         toolbar.append(self.count)
+
+        toolbar_spacer = Gtk.Box()
+        toolbar_spacer.set_hexpand(True)
+        toolbar.append(toolbar_spacer)
+
+        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        controls.set_hexpand(False)
+        controls.set_halign(Gtk.Align.END)
 
         self.search = Gtk.SearchEntry(placeholder_text="Filter images...")
         self.search.set_size_request(210, -1)
+        self.search.set_hexpand(False)
         self.search.connect("search-changed", lambda *_: self.render())
-        toolbar.append(self.search)
+        controls.append(self.search)
 
         self.filter_options = ["All folders", "Recent"]
         self.folder_filter = Gtk.DropDown.new_from_strings(self.filter_options)
+        self.folder_filter.set_size_request(150, -1)
+        self.folder_filter.set_hexpand(False)
         self.folder_filter.connect("notify::selected", lambda *_: self.render())
-        toolbar.append(self.folder_filter)
+        controls.append(self.folder_filter)
 
         refresh = action_button("RESCAN", lambda *_: self.refresh())
-        toolbar.append(refresh)
+        refresh.set_size_request(88, -1)
+        refresh.set_hexpand(False)
+        controls.append(refresh)
+
+        toolbar.append(controls)
         self.append(toolbar)
 
         self.recent_card = card(
             "// RECENT",
-            "Your most recently applied wallpapers stay one click away."
+            "The latest applied wallpaper stays at one fixed preview size, so changing wallpapers never resizes the page."
         )
-        self.recent_flow = Gtk.FlowBox()
-        self.recent_flow.set_selection_mode(Gtk.SelectionMode.NONE)
-        self.recent_flow.set_max_children_per_line(6)
-        self.recent_flow.set_column_spacing(8)
-        self.recent_flow.set_row_spacing(8)
-        self.recent_card.append(self.recent_flow)
+        self.recent_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self.recent_box.set_halign(Gtk.Align.START)
+        self.recent_box.set_valign(Gtk.Align.START)
+        self.recent_box.set_hexpand(False)
+        self.recent_box.set_vexpand(False)
+        self.recent_card.append(self.recent_box)
         self.append(self.recent_card)
 
         library = card(
@@ -835,15 +866,25 @@ class WallpaperPage(Page):
         )
         self.flow = Gtk.FlowBox()
         self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
-        self.flow.set_min_children_per_line(2)
-        self.flow.set_max_children_per_line(4)
+        self.flow.set_min_children_per_line(1)
+        # Three 210px cards stay comfortably inside the fixed 1190px deck
+        # after sidebar, page margins and card padding are accounted for.
+        self.flow.set_max_children_per_line(3)
         self.flow.set_column_spacing(10)
         self.flow.set_row_spacing(10)
-        self.flow.set_homogeneous(True)
+        self.flow.set_homogeneous(False)
+        self.flow.set_halign(Gtk.Align.START)
+        self.flow.set_valign(Gtk.Align.START)
+        self.flow.set_vexpand(False)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_min_content_height(470)
+        scroll.set_min_content_height(390)
+        if hasattr(scroll, "set_max_content_height"):
+            scroll.set_max_content_height(470)
+        if hasattr(scroll, "set_propagate_natural_height"):
+            scroll.set_propagate_natural_height(False)
+        scroll.set_vexpand(False)
         scroll.set_child(self.flow)
         library.append(scroll)
         self.append(library)
@@ -858,6 +899,14 @@ class WallpaperPage(Page):
         self.refresh()
 
     @staticmethod
+    def _clear_box(box):
+        child = box.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            box.remove(child)
+            child = nxt
+
+    @staticmethod
     def _clear_flow(flow):
         child = flow.get_first_child()
         while child:
@@ -865,23 +914,101 @@ class WallpaperPage(Page):
             flow.remove(child)
             child = nxt
 
+    @staticmethod
+    def _scaled_picture(path: Path, width: int, height: int):
+        """Return a bounded wallpaper preview that can never negotiate source size.
+
+        The source image is decoded into a pixbuf no larger than the requested
+        preview box.  If decoding fails, use a fixed-size placeholder instead of
+        falling back to Gtk.Picture.new_for_filename(), because that fallback can
+        re-introduce the original image dimensions into GTK layout negotiation.
+        """
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                str(path), max(1, int(width)), max(1, int(height)), True
+            )
+            picture = Gtk.Picture.new_for_pixbuf(pixbuf)
+            picture.set_content_fit(Gtk.ContentFit.COVER)
+            picture.set_can_shrink(True)
+        except Exception:
+            picture = Gtk.Box()
+            picture.add_css_class("wallpaper-preview-missing")
+        picture.set_hexpand(False)
+        picture.set_vexpand(False)
+        picture.set_halign(Gtk.Align.START)
+        picture.set_valign(Gtk.Align.START)
+        picture.set_size_request(width, height)
+        if hasattr(picture, "set_overflow"):
+            picture.set_overflow(Gtk.Overflow.HIDDEN)
+        return picture
+
+    @staticmethod
+    def _folder_caption(path: Path) -> str:
+        """Short, stable folder text for preview overlays.
+
+        Long backup/project paths were another hidden source of natural-width
+        growth: an ellipsized Gtk.Label can still request the full unbounded text
+        width. Keep the visible caption intentionally short and put the full path
+        in the tooltip instead.
+        """
+        home = Path.home()
+        for root_name in ("Documents", "Pictures"):
+            root = home / root_name
+            try:
+                relative = path.parent.relative_to(root)
+            except ValueError:
+                continue
+            if str(relative) == ".":
+                return root_name
+            leaf = relative.name or root_name
+            return f"{root_name} / {leaf}"
+        return path.parent.name or str(path.parent)
+
+    @staticmethod
+    def _reclamp_window():
+        # GTK may update natural-size requests after a new thumbnail is inserted.
+        # Re-apply the deck's known floating geometry once layout has settled so a
+        # pathological image/path can never leave the window permanently enlarged.
+        ensure_control_deck_floating(center=False)
+        return False
+
     def refresh(self):
         self.all_images = scan_wallpapers()
         self.recent_images = recent_wallpapers()
         self.current_path = current_wallpaper()
 
-        folders = wallpaper_folders()
-        self.filter_options = ["All folders", "Recent", *folders]
+        # Keep the folder selector deliberately bounded.  Earlier builds added
+        # every nested directory below Documents/Pictures to Gtk.DropDown.  GTK
+        # measures the widest model item even when that item is not selected, so
+        # a long backup/project path could silently increase the window's natural
+        # width each time the library was rescanned.  Root filters still include
+        # every nested image; search handles finer-grained discovery.
+        self.filter_options = []
+        if Path.home().joinpath("Documents").exists():
+            self.filter_options.append("Documents")
+        if Path.home().joinpath("Pictures").exists():
+            self.filter_options.append("Pictures")
+        self.filter_options.extend(["All folders", "Recent"])
         model = Gtk.StringList.new(self.filter_options)
         self.folder_filter.set_model(model)
         default_filter = "Documents" if "Documents" in self.filter_options else "All folders"
         self.folder_filter.set_selected(self.filter_options.index(default_filter))
 
-        self._clear_flow(self.recent_flow)
-        for path in self.recent_images[:6]:
-            self.recent_flow.insert(self._tile(path, compact=True), -1)
-        self.recent_card.set_visible(bool(self.recent_images))
+        self._render_recent()
         self.render()
+
+    def _render_recent(self):
+        self._clear_box(self.recent_box)
+        path = None
+        if self.current_path and self.current_path.exists():
+            path = self.current_path
+        elif self.recent_images:
+            path = self.recent_images[0]
+        if path:
+            self.recent_box.append(self._tile(path, featured=True))
+            self.recent_card.set_visible(True)
+        else:
+            self.recent_card.set_visible(False)
 
     def render(self):
         self._clear_flow(self.flow)
@@ -917,40 +1044,64 @@ class WallpaperPage(Page):
         else:
             self.status.set_text("")
 
-    def _tile(self, path: Path, compact=False):
+    def _tile(self, path: Path, featured=False):
         button = Gtk.Button()
         button.add_css_class("wallpaper-tile")
+        if featured:
+            button.add_css_class("wallpaper-featured")
         if self.current_path and path == self.current_path:
             button.add_css_class("wallpaper-current")
-        button.set_size_request(150 if compact else 210, 100 if compact else 145)
+
+        tile_width = self.FEATURED_WIDTH if featured else self.TILE_WIDTH
+        tile_height = self.FEATURED_HEIGHT if featured else self.TILE_HEIGHT
+        button.set_size_request(tile_width, tile_height)
+        button.set_hexpand(False)
+        button.set_vexpand(False)
+        button.set_halign(Gtk.Align.START)
+        button.set_valign(Gtk.Align.START)
+        if hasattr(button, "set_overflow"):
+            button.set_overflow(Gtk.Overflow.HIDDEN)
 
         overlay = Gtk.Overlay()
+        overlay.set_size_request(tile_width, tile_height)
+        overlay.set_hexpand(False)
+        overlay.set_vexpand(False)
+        overlay.set_halign(Gtk.Align.START)
+        overlay.set_valign(Gtk.Align.START)
+        if hasattr(overlay, "set_overflow"):
+            overlay.set_overflow(Gtk.Overflow.HIDDEN)
 
-        picture = Gtk.Picture.new_for_filename(str(path))
-        picture.set_content_fit(Gtk.ContentFit.COVER)
-        picture.set_can_shrink(True)
+        picture = self._scaled_picture(path, tile_width, tile_height)
         overlay.set_child(picture)
 
         label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         label_box.add_css_class("wallpaper-label")
-        label_box.set_halign(Gtk.Align.FILL)
+        label_box.set_halign(Gtk.Align.START)
         label_box.set_valign(Gtk.Align.END)
+        label_box.set_hexpand(False)
+        label_box.set_vexpand(False)
         label_box.set_margin_start(7)
         label_box.set_margin_end(7)
         label_box.set_margin_bottom(7)
+        label_width = max(96, tile_width - 28)
+        label_box.set_size_request(label_width, -1)
 
         name = Gtk.Label(label=path.stem, xalign=0)
-        name.set_ellipsize(3)
+        name.set_ellipsize(Pango.EllipsizeMode.END)
+        name.set_single_line_mode(True)
+        name.set_max_width_chars(48 if featured else 24)
+        name.set_size_request(label_width, -1)
+        name.set_tooltip_text(path.name)
         name.add_css_class("wallpaper-name")
         label_box.append(name)
 
-        try:
-            folder_text = str(path.parent.relative_to(Path.home()))
-        except ValueError:
-            folder_text = str(path.parent)
-
+        folder_text = self._folder_caption(path)
         folder = Gtk.Label(label=folder_text, xalign=0)
-        folder.set_ellipsize(3)
+        folder.set_ellipsize(Pango.EllipsizeMode.END)
+        folder.set_single_line_mode(True)
+        folder.set_max_width_chars(48 if featured else 24)
+        folder.set_size_request(label_width, -1)
+        folder.set_tooltip_text(str(path.parent))
         folder.add_css_class("wallpaper-folder")
         label_box.append(folder)
 
@@ -966,10 +1117,7 @@ class WallpaperPage(Page):
             self.current_path = path
             self.recent_images = recent_wallpapers()
             self.render()
-            self._clear_flow(self.recent_flow)
-            for recent_path in self.recent_images[:6]:
-                self.recent_flow.insert(self._tile(recent_path, compact=True), -1)
-            self.recent_card.set_visible(True)
+            self._render_recent()
 
             auto_ok, auto_message = apply_follow_if_enabled(path)
             if auto_message:
@@ -978,6 +1126,11 @@ class WallpaperPage(Page):
                     if auto_ok else
                     f"{path.name} — {message}  //  Auto Color error: {auto_message}"
                 )
+
+            # Two idle passes cover both thumbnail replacement and optional
+            # Follow Wallpaper palette/CSS updates before forcing final geometry.
+            GLib.timeout_add(90, self._reclamp_window)
+            GLib.timeout_add(260, self._reclamp_window)
 
 
 class ThemePage(Page):
@@ -2697,69 +2850,61 @@ class RofiPage(Page):
 
 
 
+class ModuleSwitch(Gtk.Switch):
+    """Tiny fixed-size module toggle: neutral grey OFF, Yakushi red ON."""
+    def __init__(self, active=False):
+        super().__init__()
+        self.add_css_class("module-switch")
+        self.set_active(bool(active))
+        self.set_hexpand(False)
+        self.set_vexpand(False)
+        self.set_halign(Gtk.Align.END)
+        self.set_valign(Gtk.Align.CENTER)
+        self.set_size_request(30, 16)
+
+
 class ModuleChip(Gtk.Box):
     def __init__(self, owner, module: str, lane: str):
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=7)
         self.owner = owner
         self.module = module
         self.lane = lane
         self.add_css_class("module-chip")
         self.set_tooltip_text(owner.DESCRIPTIONS.get(module, "Waybar module"))
+        self.set_hexpand(True)
+        self.set_vexpand(False)
+        self.set_size_request(-1, 32)
 
         handle = Gtk.Label(label="⠿")
         handle.add_css_class("module-handle")
         handle.set_tooltip_text("Drag to reorder this module.")
         self.append(handle)
 
-        # Drag starts only from the handle. Clicking the rest of the card is safe.
         drag = Gtk.DragSource()
         drag.set_actions(Gdk.DragAction.MOVE)
         drag.connect("prepare", self._prepare_drag)
         handle.add_controller(drag)
 
-        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-        labels.set_hexpand(True)
-
         name = Gtk.Label(label=owner.FRIENDLY.get(module, module), xalign=0)
         name.add_css_class("module-name")
         name.set_ellipsize(Pango.EllipsizeMode.END)
-        labels.append(name)
+        name.set_hexpand(True)
+        self.append(name)
 
-        sample = Gtk.Label(label=f'Preview: {owner.preview_text(module)}', xalign=0)
-        sample.add_css_class("module-preview-text")
-        sample.set_ellipsize(Pango.EllipsizeMode.END)
-        labels.append(sample)
+        # Keep the state control visually independent from the module text.
+        # The module name expands, pushing one consistently tiny switch to the
+        # absolute right edge of every row. Preview text remains available in
+        # the tooltip instead of competing for horizontal space.
+        name.set_tooltip_text(owner.preview_text(module))
 
-        technical = Gtk.Label(label=module, xalign=0)
-        technical.add_css_class("module-id")
-        technical.set_ellipsize(Pango.EllipsizeMode.END)
-        labels.append(technical)
-
-        desc = Gtk.Label(label=owner.DESCRIPTIONS.get(module, "Waybar module"), xalign=0)
-        desc.add_css_class("module-desc")
-        desc.set_ellipsize(Pango.EllipsizeMode.END)
-        desc.set_single_line_mode(True)
-        labels.append(desc)
-
-        self.append(labels)
-
-        # Avoid Gtk.Switch here: some system GTK themes force a huge blue/white
-        # native switch. A ToggleButton gives the deck full visual control.
-        self.enabled = Gtk.ToggleButton()
-        self.enabled.add_css_class("module-toggle")
-        self.enabled.set_active(lane != "Disabled")
-        self._refresh_toggle_label()
+        self.enabled = ModuleSwitch(lane != "Disabled")
         self.enabled.set_tooltip_text("Enable or disable this Waybar module.")
-        self.enabled.connect("toggled", self._set_enabled)
+        self.enabled.connect("notify::active", self._set_enabled)
         self.append(self.enabled)
 
-        # Drop on a module = insert directly before this module.
         drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
         drop.connect("drop", self._drop_before)
         self.add_controller(drop)
-
-    def _refresh_toggle_label(self):
-        self.enabled.set_label("ON" if self.enabled.get_active() else "OFF")
 
     def _prepare_drag(self, *_args):
         return Gdk.ContentProvider.new_for_value(self.module)
@@ -2771,10 +2916,8 @@ class ModuleChip(Gtk.Box):
         self.owner.move_module(source, self.lane, before=self.module)
         return True
 
-    def _set_enabled(self, button):
-        self._refresh_toggle_label()
+    def _set_enabled(self, button, _pspec=None):
         enabled = button.get_active()
-
         if enabled and self.lane == "Disabled":
             destination = self.owner.last_active_lane.get(self.module, "Right")
             GLib.idle_add(self.owner.move_module, self.module, destination)
@@ -2789,6 +2932,9 @@ class ModuleLane(Gtk.Box):
         self.owner = owner
         self.lane_name = lane_name
         self.add_css_class("module-lane")
+        self.add_css_class(f"module-lane-{lane_name.lower()}")
+        self.set_hexpand(True)
+        self.set_vexpand(False)
 
         title = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         title.add_css_class("module-lane-header")
@@ -2801,11 +2947,11 @@ class ModuleLane(Gtk.Box):
         self.count = Gtk.Label(label="0")
         self.count.add_css_class("module-lane-count")
         title.append(self.count)
-
         self.append(title)
 
-        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.body.set_vexpand(True)
+        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        self.body.set_hexpand(True)
+        self.body.set_vexpand(False)
         self.append(self.body)
 
         drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
@@ -2816,7 +2962,6 @@ class ModuleLane(Gtk.Box):
         source = str(value)
         if not source:
             return False
-
         self.owner.move_module(source, self.lane_name)
         return True
 
@@ -2828,16 +2973,14 @@ class ModuleLane(Gtk.Box):
             child = next_child
 
         for module in modules:
-            self.body.append(
-                ModuleChip(self.owner, module, self.lane_name)
-            )
+            self.body.append(ModuleChip(self.owner, module, self.lane_name))
 
         self.count.set_text(str(len(modules)))
 
         if not modules:
             empty = Gtk.Label(label="Drop modules here")
             empty.add_css_class("module-empty")
-            empty.set_vexpand(True)
+            empty.set_halign(Gtk.Align.START)
             empty.set_valign(Gtk.Align.CENTER)
             self.body.append(empty)
 
@@ -2853,6 +2996,7 @@ class WaybarPage(Page):
         "cpu": "CPU",
         "custom/cpu_temp": "CPU Temperature",
         "custom/gpu_temp": "GPU Temperature",
+        "custom/governor": "CPU Governor",
         "tray": "System Tray",
         "clock": "Date",
         "clock#simpleclock": "Time",
@@ -2869,6 +3013,7 @@ class WaybarPage(Page):
         "cpu": "CPU",
         "custom/cpu_temp": "CPU°C",
         "custom/gpu_temp": "GPU°C",
+        "custom/governor": "GOV",
         "tray": "TRAY",
         "clock": "DATE",
         "clock#simpleclock": "TIME",
@@ -2885,6 +3030,7 @@ class WaybarPage(Page):
         "cpu": "Current CPU load.",
         "custom/cpu_temp": "CPU temperature sensor output.",
         "custom/gpu_temp": "GPU temperature sensor output.",
+        "custom/governor": "CPU governor indicator and switch action.",
         "tray": "System tray area for background applications.",
         "clock": "Date and calendar popover.",
         "clock#simpleclock": "Simple time display.",
@@ -2912,7 +3058,10 @@ class WaybarPage(Page):
         preview_card.append(self.preview)
         self.append(preview_card)
 
-        look = card("// BAR GEOMETRY")
+        look = card(
+            "// BAR SETTINGS",
+            "Compact geometry controls. Changes are applied together with the module layout."
+        )
 
         self.height = spin(current.height, 24, 60)
         self.margin_top = spin(current.margin_top, 0, 30)
@@ -2923,19 +3072,28 @@ class WaybarPage(Page):
         self.padding = spin(current.padding, 2, 24)
         self.opacity = slider(current.opacity, 0.15, 1.0, 0.01)
 
-        look.append(setting_row("Bar height", self.height))
-        look.append(setting_row("Top margin", self.margin_top))
-        look.append(setting_row("Side margins", self.margin_side))
-        look.append(setting_row("Module spacing", self.spacing))
-        look.append(setting_row("Font size", self.font_size))
-        look.append(setting_row("Module roundness", self.radius))
-        look.append(setting_row("Module padding", self.padding))
-        look.append(setting_row("Module opacity", self.opacity))
+        settings_grid = Gtk.Grid(column_spacing=12, row_spacing=6)
+        settings_grid.set_column_homogeneous(True)
+        geometry_rows = [
+            ("Bar height", self.height),
+            ("Top margin", self.margin_top),
+            ("Side margins", self.margin_side),
+            ("Module spacing", self.spacing),
+            ("Font size", self.font_size),
+            ("Module roundness", self.radius),
+            ("Module padding", self.padding),
+            ("Module opacity", self.opacity),
+        ]
+        for index, (label, widget) in enumerate(geometry_rows):
+            row = setting_row(label, widget)
+            row.add_css_class("bar-setting-compact")
+            settings_grid.attach(row, index % 2, index // 2, 1, 1)
+        look.append(settings_grid)
         self.append(look)
 
         modules_card = card(
-            "// MODULE LAYOUT",
-            "Grab the handle, drag onto another module to place it before that module, or drop into a lane to append it."
+            "// MODULES",
+            "LEFT, CENTER, and RIGHT are kept as three obvious lanes. Grey means disabled; Yakushi red means enabled. Drag the handle to reorder or move modules between lanes."
         )
 
         self.module_state = {
@@ -2946,29 +3104,23 @@ class WaybarPage(Page):
         }
         self.last_active_lane = {}
 
-        layout = Gtk.Grid(column_spacing=9, row_spacing=9)
-        layout.set_column_homogeneous(True)
-
+        lanes_grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+        lanes_grid.set_column_homogeneous(True)
+        lanes_grid.set_hexpand(True)
         self.lanes = {}
-        for index, lane_name in enumerate(("Left", "Center", "Right")):
+
+        for column, lane_name in enumerate(("Left", "Center", "Right")):
             lane = ModuleLane(self, lane_name)
-            lane.set_size_request(-1, 260)
-            layout.attach(lane, index, 0, 1, 1)
+            lanes_grid.attach(lane, column, 0, 1, 1)
             self.lanes[lane_name] = lane
 
         disabled = ModuleLane(self, "Disabled")
-        disabled.set_size_request(-1, 125)
-        layout.attach(disabled, 0, 1, 3, 1)
+        disabled.add_css_class("module-lane-disabled-wide")
+        lanes_grid.attach(disabled, 0, 1, 3, 1)
         self.lanes["Disabled"] = disabled
 
-        modules_card.append(layout)
+        modules_card.append(lanes_grid)
         self.append(modules_card)
-
-        help_card = card(
-            "// HOW TO USE IT",
-            "Example: drag CPU onto Memory to place CPU before Memory. Use the switch on a module to disable it without deleting its configuration. The preview updates immediately."
-        )
-        self.append(help_card)
 
         self.status = Gtk.Label(xalign=0)
         self.status.add_css_class("status")
