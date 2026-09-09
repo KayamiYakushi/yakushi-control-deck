@@ -1,5 +1,11 @@
 @import "../hypr/colors.rasi"
-configuration { modi: "drun,run,filebrowser,window"; show-icons: true; display-drun: " "; drun-display-format: "{name}"; font: "JetBrainsMono Nerd Font 12"; }
+configuration {
+    modi: "drun,run,filebrowser,window";
+    show-icons: true;
+    display-drun: " ";
+    drun-display-format: "{name}";
+    font: "JetBrainsMono Nerd Font 12";
+}
 * { bg: @yak-bg; border-col: @yak-border; selected-bg: @yak-accent; selected-fg: @yak-selected-fg; text-col: @yak-fg; text-alt: @yak-muted; background-color: transparent; text-color: @text-col; }
 window { transparency: "real"; background-color: @yak-rofi-bg; border: 2px; border-color: @yak-border; border-radius: 14px; width: 650px; padding: 25px; }
 mainbox { background-color: transparent; children: [ inputbar, listview ]; spacing: 18px; }

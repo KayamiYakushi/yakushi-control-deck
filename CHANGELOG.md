@@ -1,3 +1,28 @@
+# v1.2.20
+
+- Reduced the sidebar footprint and prevented decorative content from widening it.
+- Removed the `YAKUSHIS FAV SONG` / barcode footer entirely.
+- Kept navigation, search, and all functional pages unchanged.
+
+## v1.2.19
+
+- Fixed the remaining Wallpaper page width-growth bug by removing unbounded nested directory names from the folder dropdown model.
+- Documents and Pictures remain recursive root filters; search still covers all indexed nested images.
+- Prevented hidden Stack pages from contributing their natural width to the application window.
+- Prevented the main content scroller from propagating oversized child natural widths to the top-level window.
+- Kept the deck non-resizable at its intended floating geometry; oversized content now scrolls internally.
+- Reduced the wallpaper library to three columns so its minimum width always fits inside the standard deck size.
+
+## v1.2.18
+
+- Fixed the remaining Wallpaper page/window growth caused by long nested folder captions participating in GTK natural-width negotiation.
+- Wallpaper preview labels are now hard-bounded, clipped and tooltip-backed; full filesystem paths can no longer widen the page.
+- Wallpaper thumbnails never fall back to an unbounded full-resolution Gtk.Picture on decode errors.
+- Re-clamps the Control Deck floating geometry after wallpaper + Follow Wallpaper palette updates, preventing a pathological layout request from leaving the window enlarged.
+- Bar Studio module controls now use tiny fixed-size GTK switches: grey when disabled, Yakushi red when enabled.
+- Removed inline module preview codes from rows so each switch stays visually separate at the far-right edge.
+- Tightened module row height/padding while preserving explicit LEFT / CENTER / RIGHT lanes and drag-and-drop ordering.
+
 # Changelog
 
 ## v1.2.14
@@ -189,3 +214,10 @@ First public release. Includes Control Deck, bundled Waybar/Rofi integration, di
 - Reworked the Rofi power menu to use fixed-size SVG icons instead of font glyphs.
 - Removes Nerd Font baseline/em-box drift from Lock, Suspend, Logout, Reboot, and Shutdown.
 - Power-menu selection now uses a dark hover surface with an accent border so icon tint remains consistent.
+
+
+## v1.2.16
+- Reworked Bar Studio into a compact two-column settings grid and stacked wrap-aware module lanes.
+- Removed oversized fixed-height module columns and redundant per-module technical/description text from the main layout; details remain available via tooltips.
+- Hardened Wallpaper Studio thumbnail sizing so a single image cannot stretch to fill the library viewport.
+- Disabled homogeneous FlowBox allocation and fixed thumbnail expansion behavior to prevent the wallpaper picker from visually growing after repeated Follow Wallpaper applies.
