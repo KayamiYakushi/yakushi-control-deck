@@ -60,6 +60,8 @@ from ..core.apps import (
     kitty_colors_save,
     rofi_load,
     rofi_save,
+    rofi_apply_theme,
+    rofi_theme_presets,
     waybar_load,
     waybar_save,
 )
@@ -2779,21 +2781,42 @@ class NautilusPage(Page):
 class RofiPage(Page):
     def __init__(self):
         super().__init__()
-
         self.append(page_header(
             "03",
             "Apps & Keys",
             "Rofi",
-            "Tune the launcher you already use. No replacement theme is generated."
+            "Choose a Yakushi launcher preset, then fine-tune geometry and transparency."
         ))
 
         current = rofi_load()
 
-        preview = card("// LAUNCHER PREVIEW")
-        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        mock.add_css_class("rofi-preview")
+        themes = card(
+            "// ROFI THEMES",
+            "Presets change launcher geometry and surface treatment. Colors continue to follow Theme Studio, while Rofi opacity stays independent."
+        )
+        theme_grid = Gtk.Grid(column_spacing=10, row_spacing=10)
+        theme_grid.set_column_homogeneous(True)
+        for index, (key, title, description) in enumerate(rofi_theme_presets()):
+            button = Gtk.Button()
+            button.add_css_class("preset-card")
+            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+            name = Gtk.Label(label=f"0{index + 1}  {title}", xalign=0)
+            name.add_css_class("preset-title")
+            content.append(name)
+            note = Gtk.Label(label=description, xalign=0)
+            note.set_wrap(True)
+            note.add_css_class("muted")
+            content.append(note)
+            button.set_child(content)
+            button.connect("clicked", self.apply_theme, key)
+            theme_grid.attach(button, index % 2, index // 2, 1, 1)
+        themes.append(theme_grid)
+        self.append(themes)
 
-        search = Gtk.Label(label="   Type to search...", xalign=0)
+        preview = card("// LAUNCHER PREVIEW")
+        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        mock.add_css_class("rofi-preview")
+        search = Gtk.Label(label="   Search applications...", xalign=0)
         search.add_css_class("rofi-preview-search")
         mock.append(search)
 
@@ -2805,15 +2828,13 @@ class RofiPage(Page):
         preview.append(mock)
         self.append(preview)
 
-        settings = card("// LAUNCHER")
-
+        settings = card("// FINE TUNING")
         self.font = Gtk.Entry(text=current.font)
         self.width = spin(current.width, 400, 1100, 10)
         self.radius = spin(current.radius, 0, 30)
         self.padding = spin(current.padding, 8, 50)
         self.lines = spin(current.lines, 3, 15)
         self.opacity = slider(current.opacity, 0.20, 1.0, 0.01)
-
         settings.append(setting_row("Font", self.font))
         settings.append(setting_row("Window width", self.width))
         settings.append(setting_row("Corner roundness", self.radius))
@@ -2826,11 +2847,25 @@ class RofiPage(Page):
         self.status.add_css_class("status")
 
         actions = Gtk.Box(spacing=8)
-        actions.append(action_button("APPLY ROFI SETTINGS", self.apply, primary=True))
-        open_button = action_button("OPEN ROFI", self.open_rofi)
-        actions.append(open_button)
+        actions.append(action_button("APPLY FINE TUNING", self.apply, primary=True))
+        actions.append(action_button("OPEN ROFI", self.open_rofi))
         self.append(actions)
         self.append(self.status)
+
+    def _reload_controls(self):
+        current = rofi_load()
+        self.font.set_text(current.font)
+        self.width.set_value(current.width)
+        self.radius.set_value(current.radius)
+        self.padding.set_value(current.padding)
+        self.lines.set_value(current.lines)
+        self.opacity.scale.set_value(current.opacity)
+
+    def apply_theme(self, _button, theme_key):
+        ok, message = rofi_apply_theme(theme_key)
+        self.status.set_text(message)
+        if ok:
+            self._reload_controls()
 
     def apply(self, *_):
         value = RofiState(
@@ -2847,8 +2882,6 @@ class RofiPage(Page):
     def open_rofi(self, *_):
         run(["sh", "-lc", "rofi -show drun >/tmp/yakushi-rofi.log 2>&1 &"], timeout=2)
         self.status.set_text("Rofi launched.")
-
-
 
 class ModuleSwitch(Gtk.Switch):
     """Tiny fixed-size module toggle: neutral grey OFF, Yakushi red ON."""
