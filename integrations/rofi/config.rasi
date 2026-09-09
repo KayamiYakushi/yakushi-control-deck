@@ -1,4 +1,7 @@
+/* YAKUSHI ROFI THEME: signature */
+/* Unified surface layout. Colors are supplied by Yakushi Theme Studio. */
 @import "../hypr/colors.rasi"
+
 configuration {
     modi: "drun,run,filebrowser,window";
     show-icons: true;
@@ -6,16 +9,123 @@ configuration {
     drun-display-format: "{name}";
     font: "JetBrainsMono Nerd Font 12";
 }
-* { bg: @yak-bg; border-col: @yak-border; selected-bg: @yak-accent; selected-fg: @yak-selected-fg; text-col: @yak-fg; text-alt: @yak-muted; background-color: transparent; text-color: @text-col; }
-window { transparency: "real"; background-color: @yak-rofi-bg; border: 2px; border-color: @yak-border; border-radius: 14px; width: 650px; padding: 25px; }
-mainbox { background-color: transparent; children: [ inputbar, listview ]; spacing: 18px; }
-inputbar { background-color: @yak-surface; border: 1px; border-color: @yak-border; border-radius: 10px; padding: 12px 16px; children: [ prompt, entry ]; }
-prompt { background-color: transparent; text-color: @yak-accent; margin: 0px 10px 0px 0px; }
-entry { background-color: transparent; text-color: @yak-fg; placeholder: "Type to search..."; placeholder-color: @yak-muted; }
-listview { background-color: transparent; lines: 7; columns: 1; spacing: 8px; cycle: true; dynamic: true; }
-element { background-color: transparent; text-color: @yak-fg; padding: 12px 16px; border-radius: 8px; }
-element selected { background-color: @yak-accent; text-color: @yak-selected-fg; }
-element-text { background-color: transparent; text-color: inherit; vertical-align: 0.5; }
-element-icon { background-color: transparent; size: 24px; margin: 0px 12px 0px 0px; }
+
+* {
+    bg: @yak-bg;
+    surface: @yak-surface;
+    surface-alt: @yak-surface-alt;
+    accent: @yak-accent;
+    hover: @yak-hover;
+    border-col: @yak-border;
+    text-col: @yak-fg;
+    text-alt: @yak-muted;
+    selected-fg: @yak-selected-fg;
+    background-color: transparent;
+    text-color: @text-col;
+}
+
+window {
+    transparency: "real";
+    background-color: @yak-rofi-bg;
+    border: 1px;
+    border-color: @yak-border;
+    border-radius: 18px;
+    width: 600px;
+    padding: 18px;
+}
+
+mainbox {
+    background-color: transparent;
+    children: [ inputbar, listview ];
+    spacing: 10px;
+}
+
+inputbar {
+    background-color: @yak-surface-alt;
+    border: 1px;
+    border-color: @yak-border;
+    border-radius: 11px;
+    padding: 10px 13px;
+    children: [ prompt, entry ];
+}
+
+prompt {
+    background-color: transparent;
+    text-color: @yak-accent;
+    margin: 0px 9px 0px 0px;
+}
+
+entry {
+    background-color: transparent;
+    text-color: @yak-fg;
+    placeholder: "Search applications...";
+    placeholder-color: @yak-muted;
+}
+
+listview {
+    background-color: @yak-surface;
+    border: 0px;
+    border-color: #00000000;
+    border-radius: 12px;
+    padding: 4px;
+    lines: 7;
+    columns: 1;
+    spacing: 0px;
+    cycle: true;
+    dynamic: true;
+    scrollbar: false;
+}
+
+element {
+    background-color: transparent;
+    text-color: @yak-fg;
+    padding: 10px 11px;
+    border: 0px;
+    border-color: #00000000;
+    border-radius: 8px;
+}
+
+element normal.normal {
+    background-color: transparent;
+    text-color: @yak-fg;
+}
+
+element alternate.normal {
+    background-color: transparent;
+    text-color: @yak-fg;
+}
+
+element selected {
+    background-color: @yak-hover;
+    text-color: @yak-fg;
+    border-color: #00000000;
+}
+
+element selected.normal {
+    background-color: @yak-hover;
+    text-color: @yak-fg;
+}
+
+element-text {
+    background-color: transparent;
+    text-color: inherit;
+    vertical-align: 0.5;
+}
+
+element-icon {
+    background-color: transparent;
+    size: 20px;
+    margin: 0px 10px 0px 0px;
+}
+
+message {
+    background-color: @yak-surface;
+    border-radius: 10px;
+}
+
+textbox {
+    background-color: transparent;
+    text-color: @yak-muted;
+}
 
 @import "yakushi-opacity.rasi"

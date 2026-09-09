@@ -354,6 +354,292 @@ class RofiState:
     opacity: float
 
 
+
+ROFI_THEME_PRESETS = (
+    (
+        "signature",
+        "SIGNATURE",
+        "Unified tonal surface with a quiet selection state.",
+        {
+            "width": 600,
+            "window_radius": 18,
+            "window_padding": 16,
+            "window_border": 1,
+            "main_spacing": 10,
+            "input_bg": "@yak-surface-alt",
+            "input_border": 1,
+            "input_radius": 11,
+            "input_padding": "10px 13px",
+            "list_bg": "@yak-surface",
+            "list_radius": 12,
+            "list_padding": "4px",
+            "lines": 7,
+            "row_padding": "10px 11px",
+            "row_radius": 8,
+            "selected_bg": "@yak-hover",
+            "icon_size": 20,
+        },
+    ),
+    (
+        "compact",
+        "COMPACT",
+        "Tighter unified surface for fast keyboard-first launching.",
+        {
+            "width": 530,
+            "window_radius": 14,
+            "window_padding": 13,
+            "window_border": 1,
+            "main_spacing": 8,
+            "input_bg": "@yak-surface-alt",
+            "input_border": 1,
+            "input_radius": 9,
+            "input_padding": "8px 11px",
+            "list_bg": "@yak-surface",
+            "list_radius": 10,
+            "list_padding": "3px",
+            "lines": 6,
+            "row_padding": "8px 9px",
+            "row_radius": 7,
+            "selected_bg": "@yak-hover",
+            "icon_size": 18,
+        },
+    ),
+    (
+        "borderless",
+        "BORDERLESS",
+        "Minimal chrome with one continuous tonal application surface.",
+        {
+            "width": 580,
+            "window_radius": 16,
+            "window_padding": 15,
+            "window_border": 0,
+            "main_spacing": 9,
+            "input_bg": "@yak-surface-alt",
+            "input_border": 0,
+            "input_radius": 10,
+            "input_padding": "9px 12px",
+            "list_bg": "@yak-surface",
+            "list_radius": 11,
+            "list_padding": "3px",
+            "lines": 7,
+            "row_padding": "9px 10px",
+            "row_radius": 7,
+            "selected_bg": "@yak-hover",
+            "icon_size": 20,
+        },
+    ),
+    (
+        "lounge",
+        "LOUNGE",
+        "More breathing room while keeping the list visually continuous.",
+        {
+            "width": 660,
+            "window_radius": 22,
+            "window_padding": 20,
+            "window_border": 1,
+            "main_spacing": 12,
+            "input_bg": "@yak-surface-alt",
+            "input_border": 1,
+            "input_radius": 13,
+            "input_padding": "11px 15px",
+            "list_bg": "@yak-surface",
+            "list_radius": 14,
+            "list_padding": "5px",
+            "lines": 8,
+            "row_padding": "11px 13px",
+            "row_radius": 9,
+            "selected_bg": "@yak-hover",
+            "icon_size": 21,
+        },
+    ),
+)
+
+
+def rofi_theme_presets() -> tuple[tuple[str, str, str], ...]:
+    return tuple((key, title, description) for key, title, description, _spec in ROFI_THEME_PRESETS)
+
+
+def _rofi_theme_spec(name: str):
+    for key, title, description, spec in ROFI_THEME_PRESETS:
+        if key == name:
+            return key, title, description, spec
+    return ROFI_THEME_PRESETS[0]
+
+
+def _rofi_theme_text(name: str, font: str) -> str:
+    key, _title, _description, spec = _rofi_theme_spec(name)
+    font = (font or "JetBrainsMono Nerd Font 12").replace('"', "")
+    return f"""/* YAKUSHI ROFI THEME: {key} */
+/* Geometry comes from Rofi Studio; all colors come from Theme Studio. */
+@import "../hypr/colors.rasi"
+
+configuration {{
+    modi: "drun,run,filebrowser,window";
+    show-icons: true;
+    display-drun: " ";
+    drun-display-format: "{{name}}";
+    font: "{font}";
+}}
+
+* {{
+    bg: @yak-bg;
+    surface: @yak-surface;
+    surface-alt: @yak-surface-alt;
+    accent: @yak-accent;
+    hover: @yak-hover;
+    border-col: @yak-border;
+    text-col: @yak-fg;
+    text-alt: @yak-muted;
+    selected-fg: @yak-selected-fg;
+    background-color: transparent;
+    text-color: @text-col;
+}}
+
+window {{
+    transparency: "real";
+    background-color: @yak-rofi-bg;
+    border: {spec["window_border"]}px;
+    border-color: @yak-border;
+    border-radius: {spec["window_radius"]}px;
+    width: {spec["width"]}px;
+    padding: {spec["window_padding"]}px;
+}}
+
+mainbox {{
+    background-color: transparent;
+    children: [ inputbar, listview ];
+    spacing: {spec["main_spacing"]}px;
+}}
+
+inputbar {{
+    background-color: {spec["input_bg"]};
+    border: {spec["input_border"]}px;
+    border-color: @yak-border;
+    border-radius: {spec["input_radius"]}px;
+    padding: {spec["input_padding"]};
+    children: [ prompt, entry ];
+}}
+
+prompt {{
+    background-color: transparent;
+    text-color: @yak-accent;
+    margin: 0px 9px 0px 0px;
+}}
+
+entry {{
+    background-color: transparent;
+    text-color: @yak-fg;
+    placeholder: "Search applications...";
+    placeholder-color: @yak-muted;
+}}
+
+listview {{
+    background-color: {spec["list_bg"]};
+    border: 0px;
+    border-color: #00000000;
+    border-radius: {spec["list_radius"]}px;
+    padding: {spec["list_padding"]};
+    lines: {spec["lines"]};
+    columns: 1;
+    spacing: 0px;
+    cycle: true;
+    dynamic: true;
+    scrollbar: false;
+}}
+
+element {{
+    background-color: transparent;
+    text-color: @yak-fg;
+    padding: {spec["row_padding"]};
+    border: 0px;
+    border-color: #00000000;
+    border-radius: {spec["row_radius"]}px;
+}}
+
+element normal.normal {{
+    background-color: transparent;
+    text-color: @yak-fg;
+}}
+
+element alternate.normal {{
+    background-color: transparent;
+    text-color: @yak-fg;
+}}
+
+element selected {{
+    background-color: {spec["selected_bg"]};
+    text-color: @yak-fg;
+    border-color: #00000000;
+}}
+
+element selected.normal {{
+    background-color: {spec["selected_bg"]};
+    text-color: @yak-fg;
+}}
+
+element-text {{
+    background-color: transparent;
+    text-color: inherit;
+    vertical-align: 0.5;
+}}
+
+element-icon {{
+    background-color: transparent;
+    size: {spec["icon_size"]}px;
+    margin: 0px 10px 0px 0px;
+}}
+
+message {{
+    background-color: @yak-surface;
+    border-radius: 10px;
+}}
+
+textbox {{
+    background-color: transparent;
+    text-color: @yak-muted;
+}}
+
+@import "yakushi-opacity.rasi"
+"""
+
+
+def rofi_apply_theme(name: str) -> tuple[bool, str]:
+    if not ROFI_CONFIG.exists():
+        return False, "Rofi config.rasi was not found."
+
+    key, title, _description, _spec = _rofi_theme_spec(name)
+    current = rofi_load()
+    original = ROFI_CONFIG.read_text()
+    override_original = ROFI_OPACITY_OVERRIDE.read_text() if ROFI_OPACITY_OVERRIDE.exists() else ""
+    files = [ROFI_CONFIG]
+    if ROFI_OPACITY_OVERRIDE.exists():
+        files.append(ROFI_OPACITY_OVERRIDE)
+    record(f"Rofi theme: {title}", files=files)
+
+    atomic_write(ROFI_CONFIG, _rofi_theme_text(key, current.font))
+    if not ROFI_OPACITY_OVERRIDE.exists():
+        colors = HYPR_COLORS_RASI.read_text() if HYPR_COLORS_RASI.exists() else ""
+        base = _named_rasi_color(colors, "yak-bg") or _named_rasi_color(colors, "bg") or "#1a1414"
+        base_match = re.search(r'#[0-9a-fA-F]{6}', base)
+        base = base_match.group(0) if base_match else "#1a1414"
+        atomic_write(ROFI_OPACITY_OVERRIDE, _rofi_override_text(base, current.opacity))
+
+    proc = run(["rofi", "-no-config", "-theme", str(ROFI_CONFIG), "-dump-theme"], timeout=5.0)
+    if proc.returncode != 0:
+        atomic_write(ROFI_CONFIG, original)
+        if override_original:
+            atomic_write(ROFI_OPACITY_OVERRIDE, override_original)
+        else:
+            try:
+                ROFI_OPACITY_OVERRIDE.unlink()
+            except FileNotFoundError:
+                pass
+        detail = (proc.stderr or proc.stdout).strip()
+        return False, f"Rofi rejected {title}. Previous theme restored. {detail}".strip()
+
+    return True, f"Rofi theme applied: {title}. Colors follow Yakushi Theme Studio."
+
+
 def _rasi_prop(text: str, block: str, prop: str, default: str) -> str:
     block_match = re.search(
         rf'(?m)^\s*{re.escape(block)}\s*\{{(.*?)^\s*\}}',
@@ -450,17 +736,73 @@ def _hex_to_rgb(value: str) -> tuple[int, int, int]:
     return tuple(int(hex_value[index:index + 2], 16) for index in (0, 2, 4))
 
 
-def _rofi_override_text(base: str, opacity: float) -> str:
-    r, g, b = _hex_to_rgb(base)
+def _rgba_rasi(value: str, opacity: float) -> str:
+    r, g, b = _hex_to_rgb(value)
     percent = round(max(0.0, min(1.0, opacity)) * 100)
-    return (
-        '/* Generated by Yakushi Control Deck. Keep this import last. */\n'
-        'window {\n'
-        '    transparency: "real";\n'
-        f'    background-color: rgba({r}, {g}, {b}, {percent}%);\n'
-        '}\n'
-    )
+    return f"rgba({r}, {g}, {b}, {percent}%)"
 
+
+def _rofi_override_text(
+    base: str,
+    opacity: float,
+    surface: str | None = None,
+    surface_alt: str | None = None,
+    hover: str | None = None,
+) -> str:
+    # The Rofi opacity slider controls every background surface, not only the
+    # outer window. Text and icons remain fully opaque.
+    if HYPR_COLORS_RASI.exists():
+        colors = HYPR_COLORS_RASI.read_text()
+        surface = surface or _named_rasi_color(colors, "yak-surface")
+        surface_alt = surface_alt or _named_rasi_color(colors, "yak-surface-alt")
+        hover = hover or _named_rasi_color(colors, "yak-hover")
+
+    surface = surface or base
+    surface_alt = surface_alt or surface
+    hover = hover or surface_alt
+
+    window_rgba = _rgba_rasi(base, opacity)
+    surface_rgba = _rgba_rasi(surface, opacity)
+    surface_alt_rgba = _rgba_rasi(surface_alt, opacity)
+    hover_rgba = _rgba_rasi(hover, opacity)
+
+    return (
+        "/* Generated by Yakushi Control Deck. Keep this import last. */\n"
+        "window {\n"
+        '    transparency: "real";\n'
+        f"    background-color: {window_rgba};\n"
+        "}\n"
+        "mainbox {\n"
+        "    background-color: transparent;\n"
+        "}\n"
+        "inputbar {\n"
+        f"    background-color: {surface_alt_rgba};\n"
+        "}\n"
+        "listview {\n"
+        f"    background-color: {surface_rgba};\n"
+        "}\n"
+        "element {\n"
+        "    background-color: transparent;\n"
+        "}\n"
+        "element normal.normal {\n"
+        "    background-color: transparent;\n"
+        "}\n"
+        "element alternate.normal {\n"
+        "    background-color: transparent;\n"
+        "}\n"
+        "element selected {\n"
+        f"    background-color: {hover_rgba};\n"
+        "}\n"
+        "element selected.normal {\n"
+        f"    background-color: {hover_rgba};\n"
+        "}\n"
+        "message {\n"
+        f"    background-color: {surface_rgba};\n"
+        "}\n"
+        "textbox {\n"
+        "    background-color: transparent;\n"
+        "}\n"
+    )
 
 def _ensure_rofi_override_import(text: str) -> str:
     import_line = '@import "yakushi-opacity.rasi"'
