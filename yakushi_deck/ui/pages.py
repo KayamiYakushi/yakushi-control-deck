@@ -2792,7 +2792,7 @@ class RofiPage(Page):
 
         themes = card(
             "// ROFI THEMES",
-            "Presets change launcher geometry and surface treatment. Colors follow Theme Studio; opacity stays independent. Raycast Glass uses the blur already managed in Appearance."
+            "Presets change launcher geometry and surface treatment. Colors follow Theme Studio; opacity stays independent. Raycast Glass safely adds its own Hyprland layer-blur rule; blur strength stays in Appearance."
         )
         theme_grid = Gtk.Grid(column_spacing=10, row_spacing=10)
         theme_grid.set_column_homogeneous(True)
@@ -2815,7 +2815,7 @@ class RofiPage(Page):
 
         preview = card(
             "// RAYCAST GLASS PREVIEW",
-            "One continuous command surface: search first, a calm result list, then compact keyboard actions."
+            "One compact command surface: fuzzy search, a calm result list, then clickable Esc and Enter actions."
         )
         mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         mock.add_css_class("rofi-preview")
@@ -2836,11 +2836,11 @@ class RofiPage(Page):
 
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         footer.add_css_class("rofi-preview-footer")
-        brand = Gtk.Label(label="YAKUSHI COMMAND BAR", xalign=0)
+        brand = Gtk.Label(label="YAKUSHI", xalign=0)
         brand.set_hexpand(True)
         brand.add_css_class("rofi-preview-brand")
         footer.append(brand)
-        keys = Gtk.Label(label="Esc  Close     ↵  Open", xalign=1)
+        keys = Gtk.Label(label="Esc  Close     Enter  Open", xalign=1)
         keys.add_css_class("rofi-preview-keys")
         footer.append(keys)
         mock.append(footer)

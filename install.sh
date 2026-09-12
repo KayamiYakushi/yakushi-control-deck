@@ -101,5 +101,5 @@ python3 -m compileall -q "$TARGET/yakushi_deck"
 python3 "$TARGET/tools/jsonc_check.py" "$HOME/.config/waybar/config.jsonc"
 rofi -no-config -theme "$HOME/.config/rofi/config.rasi" -dump-theme >/dev/null
 pkill -x waybar 2>/dev/null || true; nohup waybar >/tmp/yakushi-waybar.log 2>&1 &
-printf '{"version":"1.2.26","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
-say ''; say '薬  Yakushi Control Deck 1.2.26 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
+printf '{"version":"1.2.27","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
+say ''; say '薬  Yakushi Control Deck 1.2.27 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
