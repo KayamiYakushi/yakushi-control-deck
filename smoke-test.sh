@@ -56,6 +56,38 @@ if command -v python3 >/dev/null 2>&1; then
     && ok 'bundled Fastfetch JSONC validates' || bad 'bundled Fastfetch JSONC invalid'
 
   ROOT="$ROOT" python3 - <<'PY' >/dev/null 2>&1
+import json
+import os
+from pathlib import Path
+
+expected = {
+    "os": "󰣇 ",
+    "host": "󰌢 ",
+    "kernel": "󰒋 ",
+    "uptime": "󰅐 ",
+    "packages": "󰏖 ",
+    "shell": "󰆍 ",
+    "display": "󰍹 ",
+    "wm": "󰖲 ",
+    "terminal": " ",
+    "cpu": "󰻠 ",
+    "gpu": "󰢮 ",
+    "memory": "󰍛 ",
+    "disk": "󰋊 ",
+}
+root = Path(os.environ["ROOT"])
+config = json.loads((root / "integrations/fastfetch/config.jsonc").read_text(encoding="utf-8"))
+actual = {
+    entry.get("type"): entry.get("key")
+    for entry in config.get("modules", [])
+    if isinstance(entry, dict) and entry.get("type") in expected
+}
+assert actual == expected
+PY
+  [[ $? -eq 0 ]] && ok 'bundled Fastfetch Nerd Font module keys match Yakushi defaults' \
+    || bad 'bundled Fastfetch Nerd Font module keys are missing or changed'
+
+  ROOT="$ROOT" python3 - <<'PY' >/dev/null 2>&1
 import os
 from pathlib import Path
 root = Path(os.environ["ROOT"])

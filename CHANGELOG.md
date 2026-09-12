@@ -1,3 +1,9 @@
+# v1.2.25
+
+- Replaced Fastfetch's default text labels with compact Nerd Font module icons.
+- Kept the packaged fresh-install config and Fastfetch Studio safe-reset config aligned.
+- Added a smoke-test guard so the Yakushi Fastfetch icon mapping cannot silently regress.
+
 # v1.2.20
 
 - Reduced the sidebar footprint and prevented decorative content from widening it.
