@@ -1,3 +1,10 @@
+# v1.2.27
+
+- Fixed the Raycast Glass footer expanding into a large empty panel; it now stays compact and results shrink to the actual item count.
+- Reduced launcher width, padding, row height, icon size, and corner radius for a closer Raycast-like footprint.
+- Added a managed Hyprland Rofi layer-blur rule for both Lua and modern `.conf` configurations, with reload validation and full rollback on failure.
+- Kept the footer's Esc/Enter controls on Rofi's native clickable button actions and left all five power-menu actions unchanged.
+
 # v1.2.26
 
 - Added a Raycast-inspired **RAYCAST GLASS** Rofi preset with fuzzy search, a unified result surface, and clickable keyboard-action hints.

@@ -89,7 +89,9 @@ PY
 
   ROOT="$ROOT" python3 - <<'PY' >/dev/null 2>&1
 import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 root = Path(os.environ["ROOT"])
 for path in sorted((root / "yakushi_deck").rglob("*.py")):
@@ -97,7 +99,13 @@ for path in sorted((root / "yakushi_deck").rglob("*.py")):
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(root))
-from yakushi_deck.core.apps import _rofi_theme_text, rofi_theme_presets
+import yakushi_deck.core.apps as apps
+from yakushi_deck.core.apps import (
+    RofiState,
+    _rofi_glass_hypr_text,
+    _rofi_theme_text,
+    rofi_theme_presets,
+)
 
 presets = {key: (title, description) for key, title, description in rofi_theme_presets()}
 assert "raycast_glass" in presets
@@ -105,12 +113,85 @@ raycast = _rofi_theme_text("raycast_glass", "JetBrainsMono Nerd Font 12")
 assert "/* YAKUSHI ROFI THEME: raycast_glass */" in raycast
 assert "children: [ inputbar, textbox-section, message, listview, footer ];" in raycast
 assert 'matching: "fuzzy";' in raycast
+assert "width: 620px;" in raycast
+assert "fixed-height: false;" in raycast
+footer = raycast.split("footer {", 1)[1].split("}", 1)[0]
+assert "expand: false;" in footer
 assert 'action: "kb-cancel";' in raycast
 assert 'action: "kb-accept-entry";' in raycast
 assert raycast.rstrip().endswith('@import "yakushi-launcher-opacity.rasi"')
+
+lua = _rofi_glass_hypr_text("hl.config({})\n", "lua", True)
+assert lua.count("YAKUSHI ROFI GLASS BEGIN") == 1
+assert 'match        = { namespace = "rofi" }' in lua
+assert "ignore_alpha = 0.20" in lua
+assert "YAKUSHI ROFI GLASS" not in _rofi_glass_hypr_text(lua, "lua", False)
+
+conf = _rofi_glass_hypr_text("# Hyprland\n", "conf", True)
+assert "layerrule {" in conf
+assert "match:namespace = rofi" in conf
+
+# Exercise the transactional path without touching the real home directory.
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
+    rofi_config = base / "rofi" / "config.rasi"
+    override = base / "rofi" / "yakushi-launcher-opacity.rasi"
+    colors = base / "hypr" / "colors.rasi"
+    hypr = base / "hypr" / "hyprland.lua"
+    rofi_config.parent.mkdir(parents=True)
+    hypr.parent.mkdir(parents=True)
+    rofi_config.write_text("ORIGINAL THEME\n")
+    override.write_text("ORIGINAL OVERRIDE\n")
+    hypr.write_text("hl.config({})\n")
+
+    apps.ROFI_CONFIG = rofi_config
+    apps.ROFI_LAUNCHER_OPACITY_OVERRIDE = override
+    apps.HYPR_COLORS_RASI = colors
+    apps._rofi_hypr_config = lambda: (hypr, "lua")
+    apps.rofi_load = lambda: RofiState(
+        font="JetBrainsMono Nerd Font 12",
+        width=600,
+        radius=18,
+        padding=16,
+        lines=7,
+        opacity=0.82,
+    )
+    apps.record = lambda *_args, **_kwargs: None
+    apps.time.sleep = lambda _seconds: None
+    apps.run = lambda command, timeout=5.0: subprocess.CompletedProcess(command, 0, "", "")
+
+    ok, _message = apps.rofi_apply_theme("raycast_glass")
+    assert ok
+    assert "YAKUSHI ROFI GLASS BEGIN" in hypr.read_text()
+    assert "fixed-height: false;" in rofi_config.read_text()
+
+    rofi_config.write_text("ORIGINAL THEME\n")
+    override.write_text("ORIGINAL OVERRIDE\n")
+    hypr.write_text("hl.config({})\n")
+    configerror_calls = 0
+
+    def run_with_new_config_error(command, timeout=5.0):
+        global configerror_calls
+        if command[:2] == ["hyprctl", "configerrors"]:
+            configerror_calls += 1
+            output = "" if configerror_calls == 1 else "new test error"
+            return subprocess.CompletedProcess(command, 0, output, "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    apps.run = run_with_new_config_error
+    ok, _message = apps.rofi_apply_theme("raycast_glass")
+    assert not ok
+    assert rofi_config.read_text() == "ORIGINAL THEME\n"
+    assert override.read_text() == "ORIGINAL OVERRIDE\n"
+    assert hypr.read_text() == "hl.config({})\n"
+
+power = (root / "integrations/rofi/scripts/powermenu.sh").read_text()
+for action in ("lock", "suspend", "logout", "reboot", "shutdown"):
+    assert f"row {action} " in power
+    assert f"{action})" in power
 PY
   if [[ $? -eq 0 ]]; then
-    ok 'Python sources compile and Raycast Glass preset is complete'
+    ok 'Python sources compile; compact Rofi blur and rollback checks pass'
   else
     bad 'Python source or Raycast Glass preset check failed'
   fi

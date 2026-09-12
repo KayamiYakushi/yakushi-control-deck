@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -363,6 +364,64 @@ class RofiState:
     opacity: float
 
 
+ROFI_GLASS_LUA_BEGIN = "-- YAKUSHI ROFI GLASS BEGIN"
+ROFI_GLASS_LUA_END = "-- YAKUSHI ROFI GLASS END"
+ROFI_GLASS_CONF_BEGIN = "# YAKUSHI ROFI GLASS BEGIN"
+ROFI_GLASS_CONF_END = "# YAKUSHI ROFI GLASS END"
+
+
+def _rofi_hypr_config() -> tuple[Path | None, str | None]:
+    directory = Path.home() / ".config" / "hypr"
+    lua = directory / "hyprland.lua"
+    conf = directory / "hyprland.conf"
+    if lua.is_file():
+        return lua, "lua"
+    if conf.is_file():
+        return conf, "conf"
+    return None, None
+
+
+def _remove_rofi_glass_rule(text: str) -> str:
+    patterns = (
+        r"(?ms)^\s*-- YAKUSHI ROFI GLASS BEGIN.*?^\s*-- YAKUSHI ROFI GLASS END[^\n]*\n?",
+        r"(?ms)^\s*# YAKUSHI ROFI GLASS BEGIN.*?^\s*# YAKUSHI ROFI GLASS END[^\n]*\n?",
+    )
+    for pattern in patterns:
+        text = re.sub(pattern, "", text)
+    return text
+
+
+def _rofi_glass_rule(style: str) -> str:
+    # Rofi-wayland exposes the layer namespace "rofi". Hyprland needs a
+    # layer rule in addition to transparent Rasi colors to render real blur.
+    if style == "lua":
+        return f'''{ROFI_GLASS_LUA_BEGIN}
+-- Managed by Yakushi Control Deck. Blur strength stays under Appearance.
+hl.layer_rule({{
+    name         = "yakushi-rofi-glass",
+    match        = {{ namespace = "rofi" }},
+    blur         = true,
+    ignore_alpha = 0.20,
+}})
+{ROFI_GLASS_LUA_END}'''
+    return f'''{ROFI_GLASS_CONF_BEGIN}
+# Managed by Yakushi Control Deck. Blur strength stays under Appearance.
+layerrule {{
+    name = yakushi-rofi-glass
+    match:namespace = rofi
+    blur = true
+    ignore_alpha = 0.20
+}}
+{ROFI_GLASS_CONF_END}'''
+
+
+def _rofi_glass_hypr_text(text: str, style: str, enabled: bool) -> str:
+    cleaned = _remove_rofi_glass_rule(text)
+    if not enabled:
+        return cleaned
+    return cleaned.rstrip() + "\n\n" + _rofi_glass_rule(style) + "\n"
+
+
 
 ROFI_THEME_PRESETS = (
     (
@@ -464,26 +523,26 @@ ROFI_THEME_PRESETS = (
     (
         "raycast_glass",
         "RAYCAST GLASS",
-        "A wide liquid-glass command bar with fuzzy search and keyboard hints.",
+        "A compact liquid-glass launcher with fuzzy search and clickable actions.",
         {
-            "width": 700,
-            "window_radius": 24,
-            "window_padding": 12,
+            "width": 620,
+            "window_radius": 20,
+            "window_padding": 10,
             "window_border": 1,
             "main_spacing": 0,
             "input_bg": "@yak-surface-alt",
             "input_border": 1,
-            "input_radius": 15,
-            "input_padding": "14px 16px",
+            "input_radius": 12,
+            "input_padding": "10px 13px",
             "list_bg": "@yak-surface",
-            "list_radius": 14,
-            "list_padding": "6px",
-            "lines": 7,
-            "row_padding": "11px 12px",
-            "row_radius": 10,
+            "list_radius": 11,
+            "list_padding": "4px",
+            "lines": 6,
+            "row_padding": "8px 10px",
+            "row_radius": 8,
             "selected_bg": "@yak-hover",
             "selected_fg": "@yak-fg",
-            "icon_size": 24,
+            "icon_size": 20,
             "layout": "raycast",
         },
     ),
@@ -512,6 +571,7 @@ def _rofi_theme_text(name: str, font: str) -> str:
     )
     input_children = "[ prompt, entry, case-indicator ]" if is_raycast else "[ prompt, entry ]"
     selected_fg = spec.get("selected_fg", "@yak-fg")
+    fixed_height = "false" if is_raycast else "true"
     raycast_configuration = (
         '    display-run: " ";\n'
         '    display-filebrowser: "󰉋 ";\n'
@@ -529,23 +589,24 @@ textbox-section {
     content: "APPLICATIONS";
     background-color: transparent;
     text-color: @yak-muted;
-    padding: 12px 12px 5px 12px;
+    padding: 9px 10px 4px 10px;
 }
 
 footer {
+    expand: false;
     orientation: horizontal;
     background-color: transparent;
     border: 1px 0px 0px 0px;
     border-color: @yak-border;
-    padding: 9px 10px 0px 10px;
-    margin: 7px 0px 0px 0px;
-    spacing: 8px;
+    padding: 7px 8px 0px 8px;
+    margin: 5px 0px 0px 0px;
+    spacing: 6px;
     children: [ textbox-footer-label, footer-spacer, button-close, button-open ];
 }
 
 textbox-footer-label {
     expand: false;
-    content: "YAKUSHI COMMAND BAR";
+    content: "YAKUSHI";
     background-color: transparent;
     text-color: @yak-muted;
     vertical-align: 0.5;
@@ -563,20 +624,22 @@ button-close {
     text-color: @yak-muted;
     border: 1px;
     border-color: @yak-border;
-    border-radius: 7px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 3px 7px;
+    vertical-align: 0.5;
 }
 
 button-open {
     expand: false;
-    content: "↵  Open";
+    content: "Enter  Open";
     action: "kb-accept-entry";
     background-color: @yak-hover;
     text-color: @yak-fg;
     border: 1px;
     border-color: @yak-border;
-    border-radius: 7px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 3px 7px;
+    vertical-align: 0.5;
 }
 """
         if is_raycast
@@ -657,6 +720,7 @@ listview {{
     spacing: 0px;
     cycle: true;
     dynamic: true;
+    fixed-height: {fixed_height};
     scrollbar: false;
 }}
 
@@ -729,9 +793,24 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
         if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists()
         else ""
     )
+    hypr_config, hypr_style = _rofi_hypr_config()
+    hypr_original = hypr_config.read_text() if hypr_config is not None else ""
+    hypr_updated = (
+        _rofi_glass_hypr_text(hypr_original, hypr_style, key == "raycast_glass")
+        if hypr_config is not None and hypr_style is not None
+        else hypr_original
+    )
+    hypr_changed = hypr_config is not None and hypr_updated != hypr_original
+    before_errors = (
+        run(["hyprctl", "configerrors"], timeout=3.0).stdout.strip()
+        if hypr_changed
+        else ""
+    )
     files = [ROFI_CONFIG]
     if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists():
         files.append(ROFI_LAUNCHER_OPACITY_OVERRIDE)
+    if hypr_changed and hypr_config is not None:
+        files.append(hypr_config)
     record(f"Rofi theme: {title}", files=files)
 
     atomic_write(ROFI_CONFIG, _rofi_theme_text(key, current.font))
@@ -744,8 +823,7 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
         _rofi_override_text(base, current.opacity),
     )
 
-    proc = run(["rofi", "-no-config", "-theme", str(ROFI_CONFIG), "-dump-theme"], timeout=5.0)
-    if proc.returncode != 0:
+    def rollback(*, restore_hypr: bool = False) -> None:
         atomic_write(ROFI_CONFIG, original)
         if override_original:
             atomic_write(ROFI_LAUNCHER_OPACITY_OVERRIDE, override_original)
@@ -754,9 +832,36 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
                 ROFI_LAUNCHER_OPACITY_OVERRIDE.unlink()
             except FileNotFoundError:
                 pass
+        if restore_hypr and hypr_changed and hypr_config is not None:
+            _write_preserving_symlink(hypr_config, hypr_original)
+            run(["hyprctl", "reload"], timeout=5.0)
+
+    proc = run(["rofi", "-no-config", "-theme", str(ROFI_CONFIG), "-dump-theme"], timeout=5.0)
+    if proc.returncode != 0:
+        rollback()
         detail = (proc.stderr or proc.stdout).strip()
         return False, f"Rofi rejected {title}. Previous theme restored. {detail}".strip()
 
+    if hypr_changed and hypr_config is not None:
+        _write_preserving_symlink(hypr_config, hypr_updated)
+        reload_proc = run(["hyprctl", "reload"], timeout=5.0)
+        if reload_proc.returncode != 0:
+            rollback(restore_hypr=True)
+            return False, "Hyprland rejected the Rofi blur rule. Theme and compositor config were restored."
+
+        time.sleep(0.20)
+        after_errors = run(["hyprctl", "configerrors"], timeout=3.0).stdout.strip()
+        if after_errors and after_errors != before_errors:
+            rollback(restore_hypr=True)
+            return False, f"A new Hyprland config error appeared. Changes were rolled back: {after_errors}"
+
+    if key == "raycast_glass":
+        if hypr_config is None:
+            return True, (
+                "Rofi theme applied: RAYCAST GLASS. Compact actions are active; "
+                "no Hyprland config was found, so compositor blur was not changed."
+            )
+        return True, "RAYCAST GLASS applied with compact actions and Hyprland layer blur."
     return True, f"Rofi theme applied: {title}. Colors follow Yakushi Theme Studio."
 
 
