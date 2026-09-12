@@ -16,14 +16,14 @@ if ((${#missing[@]})); then say 'Installing official Arch packages:'; printf '  
 mkdir -p "$BACKUP" "$BIN" "$DATA"
 backup_file(){ local src="$1" rel="$2"; [[ -e "$src" ]] || return 0; mkdir -p "$BACKUP/$(dirname "$rel")"; cp -a "$src" "$BACKUP/$rel"; }
 backup_file "$HOME/.config/waybar/config.jsonc" waybar/config.jsonc; backup_file "$HOME/.config/waybar/style.css" waybar/style.css; backup_file "$HOME/.config/waybar/scripts" waybar/scripts
-backup_file "$HOME/.config/rofi/config.rasi" rofi/config.rasi; backup_file "$HOME/.config/rofi/yakushi-opacity.rasi" rofi/yakushi-opacity.rasi; backup_file "$HOME/.config/rofi/powermenu.rasi" rofi/powermenu.rasi; backup_file "$HOME/.config/rofi/scripts" rofi/scripts; backup_file "$HOME/.config/rofi/icons/power" rofi/icons/power
+backup_file "$HOME/.config/rofi/config.rasi" rofi/config.rasi; backup_file "$HOME/.config/rofi/yakushi-launcher-opacity.rasi" rofi/yakushi-launcher-opacity.rasi; backup_file "$HOME/.config/rofi/yakushi-opacity.rasi" rofi/yakushi-opacity.rasi; backup_file "$HOME/.config/rofi/powermenu.rasi" rofi/powermenu.rasi; backup_file "$HOME/.config/rofi/scripts" rofi/scripts; backup_file "$HOME/.config/rofi/icons/power" rofi/icons/power
 backup_file "$HOME/.config/hypr/colors.css" hypr/colors.css; backup_file "$HOME/.config/hypr/colors.rasi" hypr/colors.rasi; backup_file "$HOME/.config/kitty/kitty.conf" kitty/kitty.conf; backup_file "$HOME/.config/kitty/yakushi-colors.conf" kitty/yakushi-colors.conf; backup_file "$HOME/.config/fastfetch/config.jsonc" fastfetch/config.jsonc; backup_file "$HOME/.config/fastfetch/logo.txt" fastfetch/logo.txt; backup_file "$HOME/.config/fastfetch/yakushi-logo.txt" fastfetch/yakushi-logo.txt
 rm -rf "$TARGET"; mkdir -p "$TARGET" "$HOME/.config/waybar/scripts" "$HOME/.config/rofi/scripts" "$HOME/.config/rofi/icons/power" "$HOME/.config/hypr" "$HOME/.config/kitty" "$HOME/.config/fastfetch" "$HOME/.local/share/applications"
 cp -a "$ROOT/yakushi_deck" "$TARGET/"; cp -a "$ROOT/integrations" "$TARGET/"; cp -a "$ROOT/tools" "$TARGET/"
 [[ -d "$ROOT/screenshots" ]] && cp -a "$ROOT/screenshots" "$TARGET/"
 cp -a "$ROOT/README.md" "$ROOT/LICENSE" "$ROOT/doctor.sh" "$ROOT/smoke-test.sh" "$ROOT/install-sddm-theme.sh" "$ROOT/bind-super-m-lock.fish" "$ROOT/restore-last-install.sh" "$ROOT/uninstall.sh" "$TARGET/"
 cp -a "$ROOT/integrations/waybar/config.jsonc" "$HOME/.config/waybar/config.jsonc"; cp -a "$ROOT/integrations/waybar/style.css" "$HOME/.config/waybar/style.css"; cp -a "$ROOT/integrations/waybar/scripts/." "$HOME/.config/waybar/scripts/"
-cp -a "$ROOT/integrations/rofi/config.rasi" "$HOME/.config/rofi/config.rasi"; cp -a "$ROOT/integrations/rofi/yakushi-opacity.rasi" "$HOME/.config/rofi/yakushi-opacity.rasi"; cp -a "$ROOT/integrations/rofi/powermenu.rasi" "$HOME/.config/rofi/powermenu.rasi"; cp -a "$ROOT/integrations/rofi/scripts/." "$HOME/.config/rofi/scripts/"; cp -a "$ROOT/integrations/rofi/icons/power/." "$HOME/.config/rofi/icons/power/"
+cp -a "$ROOT/integrations/rofi/config.rasi" "$HOME/.config/rofi/config.rasi"; cp -a "$ROOT/integrations/rofi/yakushi-launcher-opacity.rasi" "$HOME/.config/rofi/yakushi-launcher-opacity.rasi"; cp -a "$ROOT/integrations/rofi/yakushi-opacity.rasi" "$HOME/.config/rofi/yakushi-opacity.rasi"; cp -a "$ROOT/integrations/rofi/powermenu.rasi" "$HOME/.config/rofi/powermenu.rasi"; cp -a "$ROOT/integrations/rofi/scripts/." "$HOME/.config/rofi/scripts/"; cp -a "$ROOT/integrations/rofi/icons/power/." "$HOME/.config/rofi/icons/power/"
 cp -a "$ROOT/integrations/hypr/colors.css" "$HOME/.config/hypr/colors.css"; cp -a "$ROOT/integrations/hypr/colors.rasi" "$HOME/.config/hypr/colors.rasi"
 chmod +x "$HOME/.config/waybar/scripts/"*.sh "$HOME/.config/rofi/scripts/"*.sh
 if [[ ! -s "$HOME/.config/kitty/kitty.conf" ]]; then
@@ -101,5 +101,5 @@ python3 -m compileall -q "$TARGET/yakushi_deck"
 python3 "$TARGET/tools/jsonc_check.py" "$HOME/.config/waybar/config.jsonc"
 rofi -no-config -theme "$HOME/.config/rofi/config.rasi" -dump-theme >/dev/null
 pkill -x waybar 2>/dev/null || true; nohup waybar >/tmp/yakushi-waybar.log 2>&1 &
-printf '{"version":"1.2.25","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
-say ''; say '薬  Yakushi Control Deck 1.2.25 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
+printf '{"version":"1.2.26","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
+say ''; say '薬  Yakushi Control Deck 1.2.26 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'

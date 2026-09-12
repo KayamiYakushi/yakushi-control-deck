@@ -128,4 +128,4 @@ textbox {
     text-color: @yak-muted;
 }
 
-@import "yakushi-opacity.rasi"
+@import "yakushi-launcher-opacity.rasi"

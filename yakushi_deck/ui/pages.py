@@ -2785,14 +2785,14 @@ class RofiPage(Page):
             "03",
             "Apps & Keys",
             "Rofi",
-            "Choose a Yakushi launcher preset, then fine-tune geometry and transparency."
+            "Choose a Yakushi launcher preset, including the Raycast-inspired liquid-glass command bar."
         ))
 
         current = rofi_load()
 
         themes = card(
             "// ROFI THEMES",
-            "Presets change launcher geometry and surface treatment. Colors continue to follow Theme Studio, while Rofi opacity stays independent."
+            "Presets change launcher geometry and surface treatment. Colors follow Theme Studio; opacity stays independent. Raycast Glass uses the blur already managed in Appearance."
         )
         theme_grid = Gtk.Grid(column_spacing=10, row_spacing=10)
         theme_grid.set_column_homogeneous(True)
@@ -2813,17 +2813,37 @@ class RofiPage(Page):
         themes.append(theme_grid)
         self.append(themes)
 
-        preview = card("// LAUNCHER PREVIEW")
-        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        preview = card(
+            "// RAYCAST GLASS PREVIEW",
+            "One continuous command surface: search first, a calm result list, then compact keyboard actions."
+        )
+        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         mock.add_css_class("rofi-preview")
         search = Gtk.Label(label="   Search applications...", xalign=0)
         search.add_css_class("rofi-preview-search")
         mock.append(search)
 
-        for text in ["Firefox", "Kitty", "Files"]:
+        section = Gtk.Label(label="APPLICATIONS", xalign=0)
+        section.add_css_class("rofi-preview-section")
+        mock.append(section)
+
+        for index, text in enumerate(["󰈹   Firefox", "   Kitty", "󰉋   Files"]):
             item = Gtk.Label(label=text, xalign=0)
             item.add_css_class("rofi-preview-item")
+            if index == 0:
+                item.add_css_class("rofi-preview-selected")
             mock.append(item)
+
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        footer.add_css_class("rofi-preview-footer")
+        brand = Gtk.Label(label="YAKUSHI COMMAND BAR", xalign=0)
+        brand.set_hexpand(True)
+        brand.add_css_class("rofi-preview-brand")
+        footer.append(brand)
+        keys = Gtk.Label(label="Esc  Close     ↵  Open", xalign=1)
+        keys.add_css_class("rofi-preview-keys")
+        footer.append(keys)
+        mock.append(footer)
 
         preview.append(mock)
         self.append(preview)

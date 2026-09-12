@@ -25,7 +25,7 @@ common_required=(
   yakushi_deck/core/lockscreen.py yakushi_deck/core/sddm_root.py
   yakushi_deck/core/autocolor.py yakushi_deck/core/nautilus.py yakushi_deck/core/fastfetch.py yakushi_deck/core/frame.py
   integrations/waybar/config.jsonc integrations/waybar/style.css
-  integrations/rofi/config.rasi integrations/rofi/yakushi-opacity.rasi integrations/rofi/powermenu.rasi integrations/rofi/scripts/powermenu.sh
+  integrations/rofi/config.rasi integrations/rofi/yakushi-launcher-opacity.rasi integrations/rofi/yakushi-opacity.rasi integrations/rofi/powermenu.rasi integrations/rofi/scripts/powermenu.sh
   integrations/rofi/icons/power/lock.svg integrations/rofi/icons/power/suspend.svg integrations/rofi/icons/power/logout.svg integrations/rofi/icons/power/reboot.svg integrations/rofi/icons/power/shutdown.svg
   integrations/fastfetch/config.jsonc integrations/fastfetch/logo.txt integrations/fastfetch/yakushi-logo.txt
   integrations/sddm/yakushi/Main.qml integrations/sddm/yakushi/metadata.desktop
@@ -89,12 +89,31 @@ PY
 
   ROOT="$ROOT" python3 - <<'PY' >/dev/null 2>&1
 import os
+import sys
 from pathlib import Path
 root = Path(os.environ["ROOT"])
 for path in sorted((root / "yakushi_deck").rglob("*.py")):
     compile(path.read_text(encoding="utf-8"), str(path), "exec")
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(root))
+from yakushi_deck.core.apps import _rofi_theme_text, rofi_theme_presets
+
+presets = {key: (title, description) for key, title, description in rofi_theme_presets()}
+assert "raycast_glass" in presets
+raycast = _rofi_theme_text("raycast_glass", "JetBrainsMono Nerd Font 12")
+assert "/* YAKUSHI ROFI THEME: raycast_glass */" in raycast
+assert "children: [ inputbar, textbox-section, message, listview, footer ];" in raycast
+assert 'matching: "fuzzy";' in raycast
+assert 'action: "kb-cancel";' in raycast
+assert 'action: "kb-accept-entry";' in raycast
+assert raycast.rstrip().endswith('@import "yakushi-launcher-opacity.rasi"')
 PY
-  [[ $? -eq 0 ]] && ok 'Python sources compile' || bad 'Python source compile failed'
+  if [[ $? -eq 0 ]]; then
+    ok 'Python sources compile and Raycast Glass preset is complete'
+  else
+    bad 'Python source or Raycast Glass preset check failed'
+  fi
 fi
 
 bash_scripts=(doctor.sh uninstall.sh restore-last-install.sh install-sddm-theme.sh smoke-test.sh)
@@ -133,10 +152,14 @@ if ((!INSTALLED_LAYOUT)); then
   fi
 fi
 
-if grep -Fq '@import "yakushi-opacity.rasi"' "$ROOT/integrations/rofi/config.rasi"; then
-  ok 'Rofi opacity override is bundled'
+if grep -Fq '@import "yakushi-launcher-opacity.rasi"' "$ROOT/integrations/rofi/config.rasi"; then
+  if grep -Fq '@import "yakushi-opacity.rasi"' "$ROOT/integrations/rofi/powermenu.rasi"; then
+    ok 'Rofi launcher and power-menu opacity overrides are isolated'
+  else
+    bad 'Rofi power-menu opacity override import is missing'
+  fi
 else
-  bad 'Rofi opacity override import missing'
+  bad 'Rofi launcher opacity override import is missing'
 fi
 
 version="$(ROOT="$ROOT" python3 - <<'PY' 2>/dev/null

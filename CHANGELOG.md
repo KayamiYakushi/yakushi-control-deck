@@ -1,3 +1,9 @@
+# v1.2.26
+
+- Added a Raycast-inspired **RAYCAST GLASS** Rofi preset with fuzzy search, a unified result surface, and clickable keyboard-action hints.
+- Added a matching in-app launcher preview while keeping colors linked to Theme Studio and geometry/opacity editable in Rofi Studio.
+- Split launcher opacity from the five-action power menu so applying or tuning the new preset cannot restyle its Lock, Suspend, Logout, Reboot, or Shutdown actions.
+
 # v1.2.25
 
 - Replaced Fastfetch's default text labels with compact Nerd Font module icons.

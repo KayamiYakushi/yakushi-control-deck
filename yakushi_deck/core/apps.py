@@ -7,7 +7,16 @@ from pathlib import Path
 
 from .io import atomic_write, restore, run
 from .history import record
-from .paths import HYPR_COLORS_RASI, KITTY_CONFIG, KITTY_COLOR_OVERRIDE, ROFI_CONFIG, ROFI_OPACITY_OVERRIDE, WAYBAR_CONFIG, WAYBAR_STYLE
+from .paths import (
+    HYPR_COLORS_RASI,
+    KITTY_CONFIG,
+    KITTY_COLOR_OVERRIDE,
+    ROFI_CONFIG,
+    ROFI_LAUNCHER_OPACITY_OVERRIDE,
+    ROFI_OPACITY_OVERRIDE,
+    WAYBAR_CONFIG,
+    WAYBAR_STYLE,
+)
 
 
 # ---------- Kitty ----------
@@ -452,6 +461,32 @@ ROFI_THEME_PRESETS = (
             "icon_size": 21,
         },
     ),
+    (
+        "raycast_glass",
+        "RAYCAST GLASS",
+        "A wide liquid-glass command bar with fuzzy search and keyboard hints.",
+        {
+            "width": 700,
+            "window_radius": 24,
+            "window_padding": 12,
+            "window_border": 1,
+            "main_spacing": 0,
+            "input_bg": "@yak-surface-alt",
+            "input_border": 1,
+            "input_radius": 15,
+            "input_padding": "14px 16px",
+            "list_bg": "@yak-surface",
+            "list_radius": 14,
+            "list_padding": "6px",
+            "lines": 7,
+            "row_padding": "11px 12px",
+            "row_radius": 10,
+            "selected_bg": "@yak-hover",
+            "selected_fg": "@yak-fg",
+            "icon_size": 24,
+            "layout": "raycast",
+        },
+    ),
 )
 
 
@@ -469,6 +504,84 @@ def _rofi_theme_spec(name: str):
 def _rofi_theme_text(name: str, font: str) -> str:
     key, _title, _description, spec = _rofi_theme_spec(name)
     font = (font or "JetBrainsMono Nerd Font 12").replace('"', "")
+    is_raycast = spec.get("layout") == "raycast"
+    main_children = (
+        "[ inputbar, textbox-section, message, listview, footer ]"
+        if is_raycast
+        else "[ inputbar, listview ]"
+    )
+    input_children = "[ prompt, entry, case-indicator ]" if is_raycast else "[ prompt, entry ]"
+    selected_fg = spec.get("selected_fg", "@yak-fg")
+    raycast_configuration = (
+        '    display-run: " ";\n'
+        '    display-filebrowser: "󰉋 ";\n'
+        '    display-window: "󰖯 ";\n'
+        '    matching: "fuzzy";\n'
+        '    sort: true;\n'
+        if is_raycast
+        else ""
+    )
+    raycast_widgets = (
+        """
+
+textbox-section {
+    expand: false;
+    content: "APPLICATIONS";
+    background-color: transparent;
+    text-color: @yak-muted;
+    padding: 12px 12px 5px 12px;
+}
+
+footer {
+    orientation: horizontal;
+    background-color: transparent;
+    border: 1px 0px 0px 0px;
+    border-color: @yak-border;
+    padding: 9px 10px 0px 10px;
+    margin: 7px 0px 0px 0px;
+    spacing: 8px;
+    children: [ textbox-footer-label, footer-spacer, button-close, button-open ];
+}
+
+textbox-footer-label {
+    expand: false;
+    content: "YAKUSHI COMMAND BAR";
+    background-color: transparent;
+    text-color: @yak-muted;
+    vertical-align: 0.5;
+}
+
+footer-spacer {
+    expand: true;
+}
+
+button-close {
+    expand: false;
+    content: "Esc  Close";
+    action: "kb-cancel";
+    background-color: @yak-surface-alt;
+    text-color: @yak-muted;
+    border: 1px;
+    border-color: @yak-border;
+    border-radius: 7px;
+    padding: 4px 8px;
+}
+
+button-open {
+    expand: false;
+    content: "↵  Open";
+    action: "kb-accept-entry";
+    background-color: @yak-hover;
+    text-color: @yak-fg;
+    border: 1px;
+    border-color: @yak-border;
+    border-radius: 7px;
+    padding: 4px 8px;
+}
+"""
+        if is_raycast
+        else ""
+    )
     return f"""/* YAKUSHI ROFI THEME: {key} */
 /* Geometry comes from Rofi Studio; all colors come from Theme Studio. */
 @import "../hypr/colors.rasi"
@@ -477,7 +590,7 @@ configuration {{
     modi: "drun,run,filebrowser,window";
     show-icons: true;
     display-drun: " ";
-    drun-display-format: "{{name}}";
+{raycast_configuration}    drun-display-format: "{{name}}";
     font: "{font}";
 }}
 
@@ -507,7 +620,7 @@ window {{
 
 mainbox {{
     background-color: transparent;
-    children: [ inputbar, listview ];
+    children: {main_children};
     spacing: {spec["main_spacing"]}px;
 }}
 
@@ -517,7 +630,7 @@ inputbar {{
     border-color: @yak-border;
     border-radius: {spec["input_radius"]}px;
     padding: {spec["input_padding"]};
-    children: [ prompt, entry ];
+    children: {input_children};
 }}
 
 prompt {{
@@ -568,13 +681,13 @@ element alternate.normal {{
 
 element selected {{
     background-color: {spec["selected_bg"]};
-    text-color: @yak-fg;
+    text-color: {selected_fg};
     border-color: #00000000;
 }}
 
 element selected.normal {{
     background-color: {spec["selected_bg"]};
-    text-color: @yak-fg;
+    text-color: {selected_fg};
 }}
 
 element-text {{
@@ -598,8 +711,9 @@ textbox {{
     background-color: transparent;
     text-color: @yak-muted;
 }}
+{raycast_widgets}
 
-@import "yakushi-opacity.rasi"
+@import "yakushi-launcher-opacity.rasi"
 """
 
 
@@ -610,28 +724,34 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
     key, title, _description, _spec = _rofi_theme_spec(name)
     current = rofi_load()
     original = ROFI_CONFIG.read_text()
-    override_original = ROFI_OPACITY_OVERRIDE.read_text() if ROFI_OPACITY_OVERRIDE.exists() else ""
+    override_original = (
+        ROFI_LAUNCHER_OPACITY_OVERRIDE.read_text()
+        if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists()
+        else ""
+    )
     files = [ROFI_CONFIG]
-    if ROFI_OPACITY_OVERRIDE.exists():
-        files.append(ROFI_OPACITY_OVERRIDE)
+    if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists():
+        files.append(ROFI_LAUNCHER_OPACITY_OVERRIDE)
     record(f"Rofi theme: {title}", files=files)
 
     atomic_write(ROFI_CONFIG, _rofi_theme_text(key, current.font))
-    if not ROFI_OPACITY_OVERRIDE.exists():
-        colors = HYPR_COLORS_RASI.read_text() if HYPR_COLORS_RASI.exists() else ""
-        base = _named_rasi_color(colors, "yak-bg") or _named_rasi_color(colors, "bg") or "#1a1414"
-        base_match = re.search(r'#[0-9a-fA-F]{6}', base)
-        base = base_match.group(0) if base_match else "#1a1414"
-        atomic_write(ROFI_OPACITY_OVERRIDE, _rofi_override_text(base, current.opacity))
+    colors = HYPR_COLORS_RASI.read_text() if HYPR_COLORS_RASI.exists() else ""
+    base = _named_rasi_color(colors, "yak-bg") or _named_rasi_color(colors, "bg") or "#1a1414"
+    base_match = re.search(r'#[0-9a-fA-F]{6}', base)
+    base = base_match.group(0) if base_match else "#1a1414"
+    atomic_write(
+        ROFI_LAUNCHER_OPACITY_OVERRIDE,
+        _rofi_override_text(base, current.opacity),
+    )
 
     proc = run(["rofi", "-no-config", "-theme", str(ROFI_CONFIG), "-dump-theme"], timeout=5.0)
     if proc.returncode != 0:
         atomic_write(ROFI_CONFIG, original)
         if override_original:
-            atomic_write(ROFI_OPACITY_OVERRIDE, override_original)
+            atomic_write(ROFI_LAUNCHER_OPACITY_OVERRIDE, override_original)
         else:
             try:
-                ROFI_OPACITY_OVERRIDE.unlink()
+                ROFI_LAUNCHER_OPACITY_OVERRIDE.unlink()
             except FileNotFoundError:
                 pass
         detail = (proc.stderr or proc.stdout).strip()
@@ -802,12 +922,18 @@ def _rofi_override_text(
         "textbox {\n"
         "    background-color: transparent;\n"
         "}\n"
+        "button-close {\n"
+        f"    background-color: {surface_alt_rgba};\n"
+        "}\n"
+        "button-open {\n"
+        f"    background-color: {hover_rgba};\n"
+        "}\n"
     )
 
 def _ensure_rofi_override_import(text: str) -> str:
-    import_line = '@import "yakushi-opacity.rasi"'
+    import_line = '@import "yakushi-launcher-opacity.rasi"'
     text = re.sub(
-        r'(?m)^\s*@import\s+["\']yakushi-opacity\.rasi["\']\s*;?\s*$',
+        r'(?m)^\s*@import\s+["\']yakushi-(?:launcher-)?opacity\.rasi["\']\s*;?\s*$',
         '',
         text,
     ).rstrip()
@@ -826,7 +952,14 @@ def rofi_load() -> RofiState:
     except ValueError:
         lines = 7
 
-    override = ROFI_OPACITY_OVERRIDE.read_text() if ROFI_OPACITY_OVERRIDE.exists() else ""
+    if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists():
+        override = ROFI_LAUNCHER_OPACITY_OVERRIDE.read_text()
+    elif ROFI_OPACITY_OVERRIDE.exists():
+        # Migration path for installations created before launcher and power
+        # menu opacity overrides were separated.
+        override = ROFI_OPACITY_OVERRIDE.read_text()
+    else:
+        override = ""
     opacity_source = _rasi_prop(override, "window", "background-color", "") if override else ""
     if not opacity_source:
         opacity_source = _named_rasi_color(colors, "yak-rofi-bg")
@@ -881,7 +1014,11 @@ def rofi_save(value: RofiState) -> tuple[bool, str]:
 
     original = ROFI_CONFIG.read_text()
     colors_original = HYPR_COLORS_RASI.read_text() if HYPR_COLORS_RASI.exists() else ""
-    override_original = ROFI_OPACITY_OVERRIDE.read_text() if ROFI_OPACITY_OVERRIDE.exists() else ""
+    override_original = (
+        ROFI_LAUNCHER_OPACITY_OVERRIDE.read_text()
+        if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists()
+        else ""
+    )
     text = original
     colors = colors_original
 
@@ -917,14 +1054,14 @@ def rofi_save(value: RofiState) -> tuple[bool, str]:
     files = [ROFI_CONFIG]
     if HYPR_COLORS_RASI.exists():
         files.append(HYPR_COLORS_RASI)
-    if ROFI_OPACITY_OVERRIDE.exists():
-        files.append(ROFI_OPACITY_OVERRIDE)
+    if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists():
+        files.append(ROFI_LAUNCHER_OPACITY_OVERRIDE)
     record("Rofi settings", files=files)
 
     atomic_write(ROFI_CONFIG, text)
     if HYPR_COLORS_RASI.exists():
         atomic_write(HYPR_COLORS_RASI, colors)
-    atomic_write(ROFI_OPACITY_OVERRIDE, override)
+    atomic_write(ROFI_LAUNCHER_OPACITY_OVERRIDE, override)
 
     proc = run(["rofi", "-no-config", "-theme", str(ROFI_CONFIG), "-dump-theme"], timeout=5.0)
     if proc.returncode != 0:
@@ -932,10 +1069,10 @@ def rofi_save(value: RofiState) -> tuple[bool, str]:
         if HYPR_COLORS_RASI.exists():
             atomic_write(HYPR_COLORS_RASI, colors_original)
         if override_original:
-            atomic_write(ROFI_OPACITY_OVERRIDE, override_original)
+            atomic_write(ROFI_LAUNCHER_OPACITY_OVERRIDE, override_original)
         else:
             try:
-                ROFI_OPACITY_OVERRIDE.unlink()
+                ROFI_LAUNCHER_OPACITY_OVERRIDE.unlink()
             except FileNotFoundError:
                 pass
         return False, "Rofi validation failed. Changes were rolled back."
