@@ -1,0 +1,41 @@
+/* Generated/managed by Yakushi Control Deck. Keep this import last. */
+window {
+    transparency: "real";
+    background-color: rgba(14, 12, 13, 90%);
+}
+mainbox {
+    background-color: transparent;
+}
+inputbar {
+    background-color: rgba(35, 25, 25, 90%);
+}
+listview {
+    background-color: rgba(26, 20, 20, 90%);
+}
+element {
+    background-color: transparent;
+}
+element normal.normal {
+    background-color: transparent;
+}
+element alternate.normal {
+    background-color: transparent;
+}
+element selected {
+    background-color: rgba(54, 35, 36, 90%);
+}
+element selected.normal {
+    background-color: rgba(54, 35, 36, 90%);
+}
+message {
+    background-color: rgba(26, 20, 20, 90%);
+}
+textbox {
+    background-color: transparent;
+}
+button-close {
+    background-color: rgba(35, 25, 25, 90%);
+}
+button-open {
+    background-color: rgba(54, 35, 36, 90%);
+}

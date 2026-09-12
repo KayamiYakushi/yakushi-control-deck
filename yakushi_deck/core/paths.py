@@ -17,6 +17,9 @@ HYPR_COLORS_RASI = CONFIG / "hypr" / "colors.rasi"
 WAYBAR_CONFIG = CONFIG / "waybar" / "config.jsonc"
 WAYBAR_STYLE = CONFIG / "waybar" / "style.css"
 ROFI_CONFIG = CONFIG / "rofi" / "config.rasi"
+# Launcher surfaces need a richer opacity override than the compact power
+# menu. Keep them separate so changing launcher glass never restyles power.
+ROFI_LAUNCHER_OPACITY_OVERRIDE = CONFIG / "rofi" / "yakushi-launcher-opacity.rasi"
 ROFI_OPACITY_OVERRIDE = CONFIG / "rofi" / "yakushi-opacity.rasi"
 KITTY_CONFIG = CONFIG / "kitty" / "kitty.conf"
 KITTY_COLOR_OVERRIDE = CONFIG / "kitty" / "yakushi-colors.conf"

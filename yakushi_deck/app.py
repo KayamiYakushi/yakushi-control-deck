@@ -684,21 +684,57 @@ def main():
         }
 
         .rofi-preview {
-            background-color: #0c0b0c;
+            background-color: rgba(12, 11, 12, 0.92);
             border: 1px solid #393035;
-            padding: 14px;
+            border-radius: 20px;
+            padding: 10px;
         }
 
         .rofi-preview-search {
-            background-color: #171315;
+            background-color: rgba(23, 19, 21, 0.92);
             color: #c86672;
             border: 1px solid #3b3034;
-            padding: 9px 12px;
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+
+        .rofi-preview-section {
+            color: #7b7270;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 11px 11px 4px;
         }
 
         .rofi-preview-item {
             color: #c8c0bc;
-            padding: 7px 10px;
+            border-radius: 9px;
+            padding: 9px 11px;
+        }
+
+        .rofi-preview-selected {
+            background-color: #362324;
+            color: #e8a29a;
+        }
+
+        .rofi-preview-footer {
+            border-top: 1px solid #393035;
+            margin-top: 7px;
+            padding: 9px 8px 0;
+        }
+
+        .rofi-preview-brand {
+            color: #7b7270;
+            font-size: 9px;
+            font-weight: 700;
+        }
+
+        .rofi-preview-keys {
+            background-color: #171315;
+            color: #a79f9c;
+            border: 1px solid #3b3034;
+            border-radius: 7px;
+            font-size: 9px;
+            padding: 4px 8px;
         }
 
         /* Preview 2: navigation contrast and module studio */

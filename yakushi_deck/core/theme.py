@@ -11,6 +11,7 @@ from .paths import (
     HYPR_COLORS_RASI,
     KITTY_CONFIG,
     ROFI_CONFIG,
+    ROFI_LAUNCHER_OPACITY_OVERRIDE,
     ROFI_OPACITY_OVERRIDE,
     WAYBAR_STYLE,
     WINDOW_FRAME_STATE,
@@ -265,12 +266,18 @@ def _rofi_concrete_override(
         "textbox {\n"
         "    background-color: transparent;\n"
         "}\n"
+        "button-close {\n"
+        f"    background-color: {surface_alt_rgba};\n"
+        "}\n"
+        "button-open {\n"
+        f"    background-color: {hover_rgba};\n"
+        "}\n"
     )
 
 def _ensure_override_import(text: str) -> str:
-    line = '@import "yakushi-opacity.rasi"'
+    line = '@import "yakushi-launcher-opacity.rasi"'
     text = re.sub(
-        r'(?m)^\s*@import\s+["\']yakushi-opacity\.rasi["\']\s*;?\s*$',
+        r'(?m)^\s*@import\s+["\']yakushi-(?:launcher-)?opacity\.rasi["\']\s*;?\s*$',
         '',
         text,
     ).rstrip()
@@ -374,7 +381,16 @@ def save(palette: Palette) -> tuple[bool, str]:
     css_original = HYPR_COLORS_CSS.read_text() if HYPR_COLORS_CSS.exists() else ""
     rasi_original = HYPR_COLORS_RASI.read_text() if HYPR_COLORS_RASI.exists() else ""
     rofi_original = ROFI_CONFIG.read_text() if ROFI_CONFIG.exists() else ""
-    rofi_override_original = ROFI_OPACITY_OVERRIDE.read_text() if ROFI_OPACITY_OVERRIDE.exists() else ""
+    rofi_override_original = (
+        ROFI_LAUNCHER_OPACITY_OVERRIDE.read_text()
+        if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists()
+        else ""
+    )
+    legacy_rofi_override = (
+        ROFI_OPACITY_OVERRIDE.read_text()
+        if ROFI_OPACITY_OVERRIDE.exists()
+        else ""
+    )
     waybar_original = WAYBAR_STYLE.read_text() if WAYBAR_STYLE.exists() else ""
 
     css = css_original
@@ -395,7 +411,9 @@ def save(palette: Palette) -> tuple[bool, str]:
         css = _set_css(css, key, value)
 
     rasi = rasi_original
-    override_opacity = _override_alpha_fraction(rofi_override_original)
+    override_opacity = _override_alpha_fraction(
+        rofi_override_original or legacy_rofi_override
+    )
     rofi_alpha = _rofi_alpha_suffix(rasi_original, rofi_original)
     rofi_opacity = override_opacity if override_opacity is not None else int(rofi_alpha, 16) / 255
     # New, unambiguous variable names used by config.rasi.
@@ -420,8 +438,8 @@ def save(palette: Palette) -> tuple[bool, str]:
         files.append(KITTY_CONFIG)
     if ROFI_CONFIG.exists():
         files.append(ROFI_CONFIG)
-    if ROFI_OPACITY_OVERRIDE.exists():
-        files.append(ROFI_OPACITY_OVERRIDE)
+    if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists():
+        files.append(ROFI_LAUNCHER_OPACITY_OVERRIDE)
     if WAYBAR_STYLE.exists():
         files.append(WAYBAR_STYLE)
     record("Desktop tonal palette", files=files)
@@ -430,7 +448,7 @@ def save(palette: Palette) -> tuple[bool, str]:
     atomic_write(HYPR_COLORS_RASI, rasi)
     if ROFI_CONFIG.exists():
         atomic_write(ROFI_CONFIG, rofi)
-        atomic_write(ROFI_OPACITY_OVERRIDE, rofi_override)
+        atomic_write(ROFI_LAUNCHER_OPACITY_OVERRIDE, rofi_override)
     if WAYBAR_STYLE.exists():
         atomic_write(WAYBAR_STYLE, waybar)
 
@@ -442,6 +460,16 @@ def save(palette: Palette) -> tuple[bool, str]:
             atomic_write(HYPR_COLORS_CSS, css_original)
             atomic_write(HYPR_COLORS_RASI, rasi_original)
             atomic_write(ROFI_CONFIG, rofi_original)
+            if rofi_override_original:
+                atomic_write(
+                    ROFI_LAUNCHER_OPACITY_OVERRIDE,
+                    rofi_override_original,
+                )
+            else:
+                try:
+                    ROFI_LAUNCHER_OPACITY_OVERRIDE.unlink()
+                except FileNotFoundError:
+                    pass
             if WAYBAR_STYLE.exists():
                 atomic_write(WAYBAR_STYLE, waybar_original)
             return False, "Rofi rejected the tonal palette. The previous theme was restored."
