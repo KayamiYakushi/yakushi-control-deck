@@ -1,3 +1,11 @@
+# v1.2.28
+
+- Reworked Raycast Glass into a layered premium surface with neutral sans typography, subtle highlight gradients, softer hairline borders, and a branded footer.
+- Replaced the flat selected row with a restrained glass highlight and thin Yakushi accent rail; removed the distracting case-indicator glyph from search.
+- Simplified footer actions into a quiet `Esc` control and a single primary `Open` action while keeping both natively clickable.
+- Set a 78% master glass opacity with lighter nested surfaces and explicitly disabled layer-rule xray so the existing Hyprland blur remains visible through the full launcher.
+- Made source-checkout updates tolerant of untracked Python caches and strips those caches from the installed application tree.
+
 # v1.2.27
 
 - Fixed the Raycast Glass footer expanding into a large empty panel; it now stays compact and results shrink to the actual item count.

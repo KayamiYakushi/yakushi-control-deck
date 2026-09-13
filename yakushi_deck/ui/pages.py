@@ -2815,7 +2815,7 @@ class RofiPage(Page):
 
         preview = card(
             "// RAYCAST GLASS PREVIEW",
-            "One compact command surface: fuzzy search, a calm result list, then clickable Esc and Enter actions."
+            "Layered glass, neutral typography, an accent selection rail and quiet clickable actions."
         )
         mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         mock.add_css_class("rofi-preview")
@@ -2836,13 +2836,16 @@ class RofiPage(Page):
 
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         footer.add_css_class("rofi-preview-footer")
-        brand = Gtk.Label(label="YAKUSHI", xalign=0)
+        brand = Gtk.Label(label="薬  YAKUSHI", xalign=0)
         brand.set_hexpand(True)
         brand.add_css_class("rofi-preview-brand")
         footer.append(brand)
-        keys = Gtk.Label(label="Esc  Close     Enter  Open", xalign=1)
-        keys.add_css_class("rofi-preview-keys")
-        footer.append(keys)
+        close_key = Gtk.Label(label="Esc", xalign=1)
+        close_key.add_css_class("rofi-preview-close")
+        footer.append(close_key)
+        open_key = Gtk.Label(label="↵  Open", xalign=1)
+        open_key.add_css_class("rofi-preview-open")
+        footer.append(open_key)
         mock.append(footer)
 
         preview.append(mock)

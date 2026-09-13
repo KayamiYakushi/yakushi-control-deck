@@ -402,6 +402,7 @@ hl.layer_rule({{
     match        = {{ namespace = "rofi" }},
     blur         = true,
     ignore_alpha = 0.20,
+    xray         = false,
 }})
 {ROFI_GLASS_LUA_END}'''
     return f'''{ROFI_GLASS_CONF_BEGIN}
@@ -411,6 +412,7 @@ layerrule {{
     match:namespace = rofi
     blur = true
     ignore_alpha = 0.20
+    xray = false
 }}
 {ROFI_GLASS_CONF_END}'''
 
@@ -523,10 +525,10 @@ ROFI_THEME_PRESETS = (
     (
         "raycast_glass",
         "RAYCAST GLASS",
-        "A compact liquid-glass launcher with fuzzy search and clickable actions.",
+        "A layered premium-glass launcher with refined typography and actions.",
         {
             "width": 620,
-            "window_radius": 20,
+            "window_radius": 21,
             "window_padding": 10,
             "window_border": 1,
             "main_spacing": 0,
@@ -538,11 +540,15 @@ ROFI_THEME_PRESETS = (
             "list_radius": 11,
             "list_padding": "4px",
             "lines": 6,
+            "list_spacing": 2,
             "row_padding": "8px 10px",
-            "row_radius": 8,
+            "row_radius": 9,
+            "row_rail": 2,
             "selected_bg": "@yak-hover",
             "selected_fg": "@yak-fg",
-            "icon_size": 20,
+            "icon_size": 22,
+            "font": "Sans 11",
+            "opacity": 0.78,
             "layout": "raycast",
         },
     ),
@@ -562,16 +568,18 @@ def _rofi_theme_spec(name: str):
 
 def _rofi_theme_text(name: str, font: str) -> str:
     key, _title, _description, spec = _rofi_theme_spec(name)
-    font = (font or "JetBrainsMono Nerd Font 12").replace('"', "")
+    font = str(spec.get("font", font or "JetBrainsMono Nerd Font 12")).replace('"', "")
     is_raycast = spec.get("layout") == "raycast"
     main_children = (
         "[ inputbar, textbox-section, message, listview, footer ]"
         if is_raycast
         else "[ inputbar, listview ]"
     )
-    input_children = "[ prompt, entry, case-indicator ]" if is_raycast else "[ prompt, entry ]"
+    input_children = "[ prompt, entry ]"
     selected_fg = spec.get("selected_fg", "@yak-fg")
     fixed_height = "false" if is_raycast else "true"
+    list_spacing = int(spec.get("list_spacing", 0))
+    row_rail = int(spec.get("row_rail", 0))
     raycast_configuration = (
         '    display-run: " ";\n'
         '    display-filebrowser: "󰉋 ";\n'
@@ -588,8 +596,58 @@ textbox-section {
     expand: false;
     content: "APPLICATIONS";
     background-color: transparent;
-    text-color: @yak-muted;
-    padding: 9px 10px 4px 10px;
+    text-color: white/42%;
+    font: "Sans Bold 9";
+    padding: 10px 11px 5px 11px;
+}
+
+window {
+    border-color: white/13%;
+    background-image: linear-gradient(to bottom, white/6%, black/5%);
+}
+
+inputbar {
+    border-color: white/11%;
+    background-image: linear-gradient(to bottom, white/7%, white/2%);
+}
+
+prompt {
+    font: "JetBrainsMono Nerd Font 12";
+}
+
+entry {
+    font: "Sans 12";
+    text-color: white/88%;
+    placeholder: "Search applications…";
+    placeholder-color: white/46%;
+}
+
+listview {
+    background-image: linear-gradient(to bottom, white/2%, black/3%);
+}
+
+element-text {
+    font: "Sans 11";
+}
+
+element normal.normal {
+    text-color: white/82%;
+}
+
+element alternate.normal {
+    text-color: white/82%;
+}
+
+element selected {
+    border-color: @yak-accent;
+    text-color: white/95%;
+    background-image: linear-gradient(to bottom, white/8%, white/2%);
+}
+
+element selected.normal {
+    border-color: @yak-accent;
+    text-color: white/95%;
+    background-image: linear-gradient(to bottom, white/8%, white/2%);
 }
 
 footer {
@@ -597,18 +655,19 @@ footer {
     orientation: horizontal;
     background-color: transparent;
     border: 1px 0px 0px 0px;
-    border-color: @yak-border;
-    padding: 7px 8px 0px 8px;
-    margin: 5px 0px 0px 0px;
+    border-color: white/8%;
+    padding: 8px 7px 0px 7px;
+    margin: 6px 0px 0px 0px;
     spacing: 6px;
     children: [ textbox-footer-label, footer-spacer, button-close, button-open ];
 }
 
 textbox-footer-label {
     expand: false;
-    content: "YAKUSHI";
+    content: "薬  YAKUSHI";
     background-color: transparent;
-    text-color: @yak-muted;
+    text-color: white/38%;
+    font: "JetBrainsMono Nerd Font Bold 9";
     vertical-align: 0.5;
 }
 
@@ -618,27 +677,30 @@ footer-spacer {
 
 button-close {
     expand: false;
-    content: "Esc  Close";
+    content: "Esc";
     action: "kb-cancel";
-    background-color: @yak-surface-alt;
-    text-color: @yak-muted;
-    border: 1px;
-    border-color: @yak-border;
+    background-color: transparent;
+    text-color: white/48%;
+    border: 0px;
+    border-color: transparent;
     border-radius: 6px;
-    padding: 3px 7px;
+    padding: 3px 6px;
+    font: "Sans 10";
     vertical-align: 0.5;
 }
 
 button-open {
     expand: false;
-    content: "Enter  Open";
+    content: "↵  Open";
     action: "kb-accept-entry";
     background-color: @yak-hover;
-    text-color: @yak-fg;
+    text-color: white/90%;
     border: 1px;
-    border-color: @yak-border;
-    border-radius: 6px;
-    padding: 3px 7px;
+    border-color: white/12%;
+    border-radius: 7px;
+    padding: 3px 8px;
+    font: "Sans 10";
+    background-image: linear-gradient(to bottom, white/8%, white/2%);
     vertical-align: 0.5;
 }
 """
@@ -717,7 +779,7 @@ listview {{
     padding: {spec["list_padding"]};
     lines: {spec["lines"]};
     columns: 1;
-    spacing: 0px;
+    spacing: {list_spacing}px;
     cycle: true;
     dynamic: true;
     fixed-height: {fixed_height};
@@ -728,7 +790,7 @@ element {{
     background-color: transparent;
     text-color: @yak-fg;
     padding: {spec["row_padding"]};
-    border: 0px;
+    border: 0px 0px 0px {row_rail}px;
     border-color: #00000000;
     border-radius: {spec["row_radius"]}px;
 }}
@@ -785,8 +847,9 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
     if not ROFI_CONFIG.exists():
         return False, "Rofi config.rasi was not found."
 
-    key, title, _description, _spec = _rofi_theme_spec(name)
+    key, title, _description, spec = _rofi_theme_spec(name)
     current = rofi_load()
+    theme_opacity = float(spec.get("opacity", current.opacity))
     original = ROFI_CONFIG.read_text()
     override_original = (
         ROFI_LAUNCHER_OPACITY_OVERRIDE.read_text()
@@ -820,7 +883,7 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
     base = base_match.group(0) if base_match else "#1a1414"
     atomic_write(
         ROFI_LAUNCHER_OPACITY_OVERRIDE,
-        _rofi_override_text(base, current.opacity),
+        _rofi_override_text(base, theme_opacity, premium=key == "raycast_glass"),
     )
 
     def rollback(*, restore_hypr: bool = False) -> None:
@@ -858,10 +921,10 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
     if key == "raycast_glass":
         if hypr_config is None:
             return True, (
-                "Rofi theme applied: RAYCAST GLASS. Compact actions are active; "
+                "Rofi theme applied: RAYCAST GLASS. Premium surfaces and actions are active; "
                 "no Hyprland config was found, so compositor blur was not changed."
             )
-        return True, "RAYCAST GLASS applied with compact actions and Hyprland layer blur."
+        return True, "RAYCAST GLASS applied with premium surfaces, refined actions and Hyprland layer blur."
     return True, f"Rofi theme applied: {title}. Colors follow Yakushi Theme Studio."
 
 
@@ -973,9 +1036,11 @@ def _rofi_override_text(
     surface: str | None = None,
     surface_alt: str | None = None,
     hover: str | None = None,
+    premium: bool | None = None,
 ) -> str:
-    # The Rofi opacity slider controls every background surface, not only the
-    # outer window. Text and icons remain fully opaque.
+    # The Rofi opacity slider remains the master alpha. Raycast Glass uses
+    # lighter subordinate layers so nested surfaces do not composite back into
+    # an almost-opaque panel and hide the compositor blur.
     if HYPR_COLORS_RASI.exists():
         colors = HYPR_COLORS_RASI.read_text()
         surface = surface or _named_rasi_color(colors, "yak-surface")
@@ -985,11 +1050,20 @@ def _rofi_override_text(
     surface = surface or base
     surface_alt = surface_alt or surface
     hover = hover or surface_alt
+    if premium is None:
+        premium = (
+            ROFI_CONFIG.exists()
+            and "/* YAKUSHI ROFI THEME: raycast_glass */" in ROFI_CONFIG.read_text()
+        )
 
+    surface_opacity = opacity * 0.28 if premium else opacity
+    surface_alt_opacity = opacity * 0.42 if premium else opacity
+    hover_opacity = opacity * 0.55 if premium else opacity
     window_rgba = _rgba_rasi(base, opacity)
-    surface_rgba = _rgba_rasi(surface, opacity)
-    surface_alt_rgba = _rgba_rasi(surface_alt, opacity)
-    hover_rgba = _rgba_rasi(hover, opacity)
+    surface_rgba = _rgba_rasi(surface, surface_opacity)
+    surface_alt_rgba = _rgba_rasi(surface_alt, surface_alt_opacity)
+    hover_rgba = _rgba_rasi(hover, hover_opacity)
+    close_background = "transparent" if premium else surface_alt_rgba
 
     return (
         "/* Generated by Yakushi Control Deck. Keep this import last. */\n"
@@ -1028,7 +1102,7 @@ def _rofi_override_text(
         "    background-color: transparent;\n"
         "}\n"
         "button-close {\n"
-        f"    background-color: {surface_alt_rgba};\n"
+        f"    background-color: {close_background};\n"
         "}\n"
         "button-open {\n"
         f"    background-color: {hover_rgba};\n"

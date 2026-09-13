@@ -100,6 +100,7 @@ for path in sorted((root / "yakushi_deck").rglob("*.py")):
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(root))
 import yakushi_deck.core.apps as apps
+from yakushi_deck.core.theme import _rofi_concrete_override
 from yakushi_deck.core.apps import (
     RofiState,
     _rofi_glass_hypr_text,
@@ -115,6 +116,12 @@ assert "children: [ inputbar, textbox-section, message, listview, footer ];" in 
 assert 'matching: "fuzzy";' in raycast
 assert "width: 620px;" in raycast
 assert "fixed-height: false;" in raycast
+assert 'font: "Sans 11";' in raycast
+assert "case-indicator" not in raycast
+assert "background-image: linear-gradient" in raycast
+assert "border: 0px 0px 0px 2px;" in raycast
+assert 'content: "薬  YAKUSHI";' in raycast
+assert 'content: "↵  Open";' in raycast
 footer = raycast.split("footer {", 1)[1].split("}", 1)[0]
 assert "expand: false;" in footer
 assert 'action: "kb-cancel";' in raycast
@@ -125,6 +132,7 @@ lua = _rofi_glass_hypr_text("hl.config({})\n", "lua", True)
 assert lua.count("YAKUSHI ROFI GLASS BEGIN") == 1
 assert 'match        = { namespace = "rofi" }' in lua
 assert "ignore_alpha = 0.20" in lua
+assert "xray         = false" in lua
 assert "YAKUSHI ROFI GLASS" not in _rofi_glass_hypr_text(lua, "lua", False)
 
 conf = _rofi_glass_hypr_text("# Hyprland\n", "conf", True)
@@ -142,6 +150,14 @@ with tempfile.TemporaryDirectory() as directory:
     hypr.parent.mkdir(parents=True)
     rofi_config.write_text("ORIGINAL THEME\n")
     override.write_text("ORIGINAL OVERRIDE\n")
+    colors.write_text(
+        "* {\n"
+        "    yak-bg: #0e0c0d;\n"
+        "    yak-surface: #1a1414;\n"
+        "    yak-surface-alt: #231919;\n"
+        "    yak-hover: #362324;\n"
+        "}\n"
+    )
     hypr.write_text("hl.config({})\n")
 
     apps.ROFI_CONFIG = rofi_config
@@ -164,6 +180,11 @@ with tempfile.TemporaryDirectory() as directory:
     assert ok
     assert "YAKUSHI ROFI GLASS BEGIN" in hypr.read_text()
     assert "fixed-height: false;" in rofi_config.read_text()
+    assert "rgba(14, 12, 13, 78%)" in override.read_text()
+    assert "rgba(26, 20, 20, 22%)" in override.read_text()
+    assert "rgba(35, 25, 25, 33%)" in override.read_text()
+    assert "rgba(54, 35, 36, 43%)" in override.read_text()
+    assert "button-close {\n    background-color: transparent;" in override.read_text()
 
     rofi_config.write_text("ORIGINAL THEME\n")
     override.write_text("ORIGINAL OVERRIDE\n")
@@ -185,13 +206,24 @@ with tempfile.TemporaryDirectory() as directory:
     assert override.read_text() == "ORIGINAL OVERRIDE\n"
     assert hypr.read_text() == "hl.config({})\n"
 
+premium_override = _rofi_concrete_override(
+    "#0e0c0d",
+    0.78,
+    "#1a1414",
+    "#231919",
+    "#362324",
+    premium=True,
+)
+assert "button-close {\n    background-color: transparent;" in premium_override
+assert "button-open {\n    background-color: rgba(54, 35, 36, 43%);" in premium_override
+
 power = (root / "integrations/rofi/scripts/powermenu.sh").read_text()
 for action in ("lock", "suspend", "logout", "reboot", "shutdown"):
     assert f"row {action} " in power
     assert f"{action})" in power
 PY
   if [[ $? -eq 0 ]]; then
-    ok 'Python sources compile; compact Rofi blur and rollback checks pass'
+    ok 'Python sources compile; premium Rofi blur and rollback checks pass'
   else
     bad 'Python source or Raycast Glass preset check failed'
   fi
@@ -225,7 +257,13 @@ else
 fi
 
 if ((!INSTALLED_LAYOUT)); then
-  if find "$ROOT/yakushi_deck" -type d -name __pycache__ -print -quit 2>/dev/null | grep -q . \
+  if [[ -d "$ROOT/.git" ]]; then
+    if git -C "$ROOT" ls-files | grep -Eq '(^|/)(__pycache__/|[^/]+\.pyc$)'; then
+      bad 'tracked Python cache/bytecode files are present in the source checkout'
+    else
+      ok 'source checkout contains no tracked Python cache/bytecode files'
+    fi
+  elif find "$ROOT/yakushi_deck" -type d -name __pycache__ -print -quit 2>/dev/null | grep -q . \
       || find "$ROOT/yakushi_deck" -type f -name '*.pyc' -print -quit 2>/dev/null | grep -q .; then
     bad 'Python cache/bytecode files are present in the source release'
   else

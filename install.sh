@@ -20,6 +20,10 @@ backup_file "$HOME/.config/rofi/config.rasi" rofi/config.rasi; backup_file "$HOM
 backup_file "$HOME/.config/hypr/colors.css" hypr/colors.css; backup_file "$HOME/.config/hypr/colors.rasi" hypr/colors.rasi; backup_file "$HOME/.config/kitty/kitty.conf" kitty/kitty.conf; backup_file "$HOME/.config/kitty/yakushi-colors.conf" kitty/yakushi-colors.conf; backup_file "$HOME/.config/fastfetch/config.jsonc" fastfetch/config.jsonc; backup_file "$HOME/.config/fastfetch/logo.txt" fastfetch/logo.txt; backup_file "$HOME/.config/fastfetch/yakushi-logo.txt" fastfetch/yakushi-logo.txt
 rm -rf "$TARGET"; mkdir -p "$TARGET" "$HOME/.config/waybar/scripts" "$HOME/.config/rofi/scripts" "$HOME/.config/rofi/icons/power" "$HOME/.config/hypr" "$HOME/.config/kitty" "$HOME/.config/fastfetch" "$HOME/.local/share/applications"
 cp -a "$ROOT/yakushi_deck" "$TARGET/"; cp -a "$ROOT/integrations" "$TARGET/"; cp -a "$ROOT/tools" "$TARGET/"
+# Running Yakushi from a source checkout may leave harmless untracked Python
+# caches behind. Never ship those into the installed application tree.
+find "$TARGET/yakushi_deck" -type f -path '*/__pycache__/*' -delete
+find "$TARGET/yakushi_deck" -depth -type d -name __pycache__ -empty -delete
 [[ -d "$ROOT/screenshots" ]] && cp -a "$ROOT/screenshots" "$TARGET/"
 cp -a "$ROOT/README.md" "$ROOT/LICENSE" "$ROOT/doctor.sh" "$ROOT/smoke-test.sh" "$ROOT/install-sddm-theme.sh" "$ROOT/bind-super-m-lock.fish" "$ROOT/restore-last-install.sh" "$ROOT/uninstall.sh" "$TARGET/"
 cp -a "$ROOT/integrations/waybar/config.jsonc" "$HOME/.config/waybar/config.jsonc"; cp -a "$ROOT/integrations/waybar/style.css" "$HOME/.config/waybar/style.css"; cp -a "$ROOT/integrations/waybar/scripts/." "$HOME/.config/waybar/scripts/"
@@ -101,5 +105,5 @@ python3 -m compileall -q "$TARGET/yakushi_deck"
 python3 "$TARGET/tools/jsonc_check.py" "$HOME/.config/waybar/config.jsonc"
 rofi -no-config -theme "$HOME/.config/rofi/config.rasi" -dump-theme >/dev/null
 pkill -x waybar 2>/dev/null || true; nohup waybar >/tmp/yakushi-waybar.log 2>&1 &
-printf '{"version":"1.2.27","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
-say ''; say '薬  Yakushi Control Deck 1.2.27 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
+printf '{"version":"1.2.28","backup":"%s","installed_at":"%s"}\n' "$BACKUP" "$STAMP" > "$DATA/install.json"
+say ''; say '薬  Yakushi Control Deck 1.2.28 installed.'; say "Backup: $BACKUP"; say 'Left click 薬 -> Control Deck'; say 'Right click 薬 -> Rofi'; say 'Power button -> Rofi power menu'; say 'Run ./doctor.sh for diagnostics.'
