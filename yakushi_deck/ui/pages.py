@@ -56,6 +56,7 @@ from ..core.apps import (
     WaybarState,
     kitty_load,
     kitty_save,
+    kitty_apply_preset,
     kitty_colors_load,
     kitty_colors_save,
     rofi_load,
@@ -64,6 +65,7 @@ from ..core.apps import (
     rofi_theme_presets,
     waybar_load,
     waybar_save,
+    waybar_apply_preset,
 )
 from ..core.hypr import (
     apply_appearance,
@@ -2302,7 +2304,7 @@ class TerminalPage(Page):
             "03",
             "Apps & Keys",
             "Terminal",
-            "Kitty appearance, transparency and a complete theme-aware terminal color palette."
+            "Kitty appearance, transparency, a complete theme-aware palette and one-click Liquid Glass styling."
         ))
 
         current = kitty_load()
@@ -2320,6 +2322,28 @@ class TerminalPage(Page):
         self.preview_mock.append(Gtk.Label(label="Desktop control, without replacing the shell.", xalign=0))
         preview.append(self.preview_mock)
         self.append(preview)
+
+        presets = card(
+            "// TERMINAL PRESETS",
+            "One click carries the Raycast-style glass language into Kitty without replacing your font size or shell setup."
+        )
+        liquid_button = Gtk.Button()
+        liquid_button.add_css_class("preset-card")
+        liquid_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        liquid_title = Gtk.Label(label="01  LIQUID GLASS", xalign=0)
+        liquid_title.add_css_class("preset-title")
+        liquid_content.append(liquid_title)
+        liquid_description = Gtk.Label(
+            label="78% tonal glass, native Kitty blur, balanced padding and a soft fade tab bar.",
+            xalign=0,
+        )
+        liquid_description.set_wrap(True)
+        liquid_description.add_css_class("muted")
+        liquid_content.append(liquid_description)
+        liquid_button.set_child(liquid_content)
+        liquid_button.connect("clicked", self.apply_liquid_glass)
+        presets.append(liquid_button)
+        self.append(presets)
 
         settings = card("// KITTY")
         self.font_size = spin(current.font_size, 7, 28, 0.5, 1)
@@ -2428,8 +2452,11 @@ class TerminalPage(Page):
         background = self._button_hex(self.color_buttons["background"])
         foreground = self._button_hex(self.color_buttons["foreground"])
         accent = self._button_hex(self.color_buttons["accent"])
+        bg_rgb = tuple(int(background[index:index + 2], 16) for index in (1, 3, 5))
+        fg_rgb = tuple(int(foreground[index:index + 2], 16) for index in (1, 3, 5))
         self._preview_provider.load_from_data((
-            f"#{self.preview_name} {{ background-color: {background}; border-color: {accent}; }}\n"
+            f"#{self.preview_name} {{ background-color: rgba({bg_rgb[0]}, {bg_rgb[1]}, {bg_rgb[2]}, 0.78); "
+            f"border-color: rgba({fg_rgb[0]}, {fg_rgb[1]}, {fg_rgb[2]}, 0.14); }}\n"
             f"#{self.preview_name} label {{ color: {foreground}; }}\n"
             f"#{self.preview_name} .terminal-preview-accent {{ color: {accent}; font-weight: 800; }}"
         ).encode())
@@ -2467,6 +2494,28 @@ class TerminalPage(Page):
             self.status.set_text(message + " Running Kitty instances were asked to reload; new Kitty windows use this palette too.")
         else:
             self.status.set_text("ERROR: " + message)
+
+    def apply_liquid_glass(self, *_):
+        palette = load_palette()
+        colors = KittyColorState(
+            mode="follow",
+            background=palette.bg,
+            foreground=palette.fg,
+            accent=palette.accent,
+        )
+        ok, message = kitty_apply_preset("liquid_glass", colors)
+        if not ok:
+            self.status.set_text("ERROR: " + message)
+            return
+
+        self.opacity.scale.set_value(0.78)
+        self.padding.set_value(12)
+        self.color_mode.set_selected(0)
+        self._set_color_buttons(colors.background, colors.foreground, colors.accent)
+        for button in self.color_buttons.values():
+            button.set_sensitive(False)
+        self._refresh_preview()
+        self.status.set_text(message)
 
     def apply(self, *_):
         value = KittyState(
@@ -3100,7 +3149,7 @@ class WaybarPage(Page):
             "02",
             "Desktop",
             "Bar Studio",
-            "Drag modules where you want them. Drop them into Disabled to hide them."
+            "Apply Liquid Glass, then drag modules where you want them or drop them into Disabled to hide them."
         ))
 
         current = waybar_load()
@@ -3113,6 +3162,28 @@ class WaybarPage(Page):
         self.preview = WaybarMiniPreview(self)
         preview_card.append(self.preview)
         self.append(preview_card)
+
+        presets = card(
+            "// BAR PRESETS",
+            "Apply the same Raycast-like material language to Waybar while keeping your module order and click actions intact."
+        )
+        liquid_button = Gtk.Button()
+        liquid_button.add_css_class("preset-card")
+        liquid_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        liquid_title = Gtk.Label(label="01  LIQUID GLASS", xalign=0)
+        liquid_title.add_css_class("preset-title")
+        liquid_content.append(liquid_title)
+        liquid_description = Gtk.Label(
+            label="Translucent gradient pills, fine highlights, restrained shadows and compositor blur.",
+            xalign=0,
+        )
+        liquid_description.set_wrap(True)
+        liquid_description.add_css_class("muted")
+        liquid_content.append(liquid_description)
+        liquid_button.set_child(liquid_content)
+        liquid_button.connect("clicked", self.apply_liquid_glass)
+        presets.append(liquid_button)
+        self.append(presets)
 
         look = card(
             "// BAR SETTINGS",
@@ -3241,4 +3312,22 @@ class WaybarPage(Page):
         )
 
         _, message = waybar_save(value)
+        self.status.set_text(message)
+
+    def apply_liquid_glass(self, *_):
+        ok, message = waybar_apply_preset("liquid_glass")
+        if not ok:
+            self.status.set_text("ERROR: " + message)
+            return
+
+        current = waybar_load()
+        self.current = current
+        self.height.set_value(current.height)
+        self.margin_top.set_value(current.margin_top)
+        self.margin_side.set_value(current.margin_left)
+        self.spacing.set_value(current.spacing)
+        self.font_size.set_value(current.font_size)
+        self.radius.set_value(current.radius)
+        self.padding.set_value(current.padding)
+        self.opacity.scale.set_value(current.opacity)
         self.status.set_text(message)
