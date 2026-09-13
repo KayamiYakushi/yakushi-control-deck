@@ -18,7 +18,7 @@ A lightweight GTK4 control deck and matching Waybar/Rofi setup for **Arch Linux 
 - Display layout, refresh rate, scale and position controls.
 - Keyboard and mouse controls with live Hyprland verification.
 - Balanced / Performance power management.
-- Tonal Theme Studio, **wallpaper-driven Auto Color (Dark/Light)**, desktop typography, wallpapers, reliable theme-aware Kitty colors, Fastfetch Studio (startup toggle, ASCII editor, module switches and logo positioning) and Rofi appearance, including a compact Raycast-inspired launcher with validated Hyprland layer blur.
+- Tonal Theme Studio, **wallpaper-driven Auto Color (Dark/Light)**, desktop typography, wallpapers, reliable theme-aware Kitty colors, Fastfetch Studio (startup toggle, ASCII editor, module switches and logo positioning) and Rofi appearance, including a layered Raycast-inspired premium-glass launcher with validated Hyprland blur.
 - Matching Hyprlock lock screen and Yakushi SDDM boot login theme.
 - Waybar drag-and-drop module ordering and enable/disable controls.
 - **Nautilus Studio** with reversible Hyprland-level window opacity control.

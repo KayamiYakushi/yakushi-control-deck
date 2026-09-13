@@ -684,18 +684,23 @@ def main():
         }
 
         .rofi-preview {
-            background-color: rgba(12, 11, 12, 0.92);
-            border: 1px solid #393035;
-            border-radius: 20px;
+            background-color: rgba(12, 11, 12, 0.82);
+            background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.05));
+            border: 1px solid rgba(255, 255, 255, 0.13);
+            border-radius: 21px;
             padding: 10px;
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.04), 0 14px 30px rgba(0, 0, 0, 0.32);
         }
 
         .rofi-preview-search {
-            background-color: rgba(23, 19, 21, 0.92);
+            background-color: rgba(23, 19, 21, 0.78);
+            background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
             color: #c86672;
-            border: 1px solid #3b3034;
+            border: 1px solid rgba(255, 255, 255, 0.11);
             border-radius: 12px;
             padding: 12px 14px;
+            font-family: sans-serif;
+            font-size: 12px;
         }
 
         .rofi-preview-section {
@@ -703,36 +708,50 @@ def main():
             font-size: 9px;
             font-weight: 700;
             padding: 11px 11px 4px;
+            font-family: sans-serif;
         }
 
         .rofi-preview-item {
             color: #c8c0bc;
             border-radius: 9px;
             padding: 9px 11px;
+            font-family: sans-serif;
         }
 
         .rofi-preview-selected {
             background-color: #362324;
+            background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
             color: #e8a29a;
+            border-left: 2px solid #c86672;
         }
 
         .rofi-preview-footer {
-            border-top: 1px solid #393035;
-            margin-top: 7px;
-            padding: 9px 8px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            margin-top: 6px;
+            padding: 8px 7px 0;
         }
 
         .rofi-preview-brand {
             color: #7b7270;
             font-size: 9px;
             font-weight: 700;
+            font-family: "JetBrainsMono Nerd Font", monospace;
         }
 
-        .rofi-preview-keys {
-            background-color: #171315;
+        .rofi-preview-close {
             color: #a79f9c;
-            border: 1px solid #3b3034;
+            font-family: sans-serif;
+            font-size: 9px;
+            padding: 4px 6px;
+        }
+
+        .rofi-preview-open {
+            background-color: rgba(54, 35, 36, 0.78);
+            background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+            color: #e8a29a;
+            border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 7px;
+            font-family: sans-serif;
             font-size: 9px;
             padding: 4px 8px;
         }
