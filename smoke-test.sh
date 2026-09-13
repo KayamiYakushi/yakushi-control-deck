@@ -102,9 +102,12 @@ sys.path.insert(0, str(root))
 import yakushi_deck.core.apps as apps
 from yakushi_deck.core.theme import _rofi_concrete_override
 from yakushi_deck.core.apps import (
+    KittyColorState,
     RofiState,
     _rofi_glass_hypr_text,
     _rofi_theme_text,
+    _waybar_glass_hypr_text,
+    _waybar_liquid_style,
     rofi_theme_presets,
 )
 
@@ -112,8 +115,12 @@ presets = {key: (title, description) for key, title, description in rofi_theme_p
 assert "raycast_glass" in presets
 raycast = _rofi_theme_text("raycast_glass", "JetBrainsMono Nerd Font 12")
 assert "/* YAKUSHI ROFI THEME: raycast_glass */" in raycast
+assert "/* YAKUSHI ROFI SHADOW: inset */" in raycast
 assert "children: [ inputbar, textbox-section, message, listview, footer ];" in raycast
 assert 'matching: "fuzzy";' in raycast
+assert 'sorting-method: "fzf";' in raycast
+assert "disable-history: true;" in raycast
+assert 'drun-match-fields: "name,generic,exec";' in raycast
 assert "width: 620px;" in raycast
 assert "fixed-height: false;" in raycast
 assert 'font: "Sans 11";' in raycast
@@ -127,6 +134,15 @@ assert "expand: false;" in footer
 assert 'action: "kb-cancel";' in raycast
 assert 'action: "kb-accept-entry";' in raycast
 assert raycast.rstrip().endswith('@import "yakushi-launcher-opacity.rasi"')
+window = raycast.split("window {", 1)[1].split("}", 1)[0]
+mainbox = raycast.split("mainbox {", 1)[1].split("}", 1)[0]
+assert "background-color: transparent;" in window
+assert "border-radius: 27px;" in window
+assert "padding: 4px 5px 8px 5px;" in window
+assert "background-color: @yak-rofi-bg;" in mainbox
+assert "border: 1px;" in mainbox
+assert "border-radius: 21px;" in mainbox
+assert "padding: 10px;" in mainbox
 
 lua = _rofi_glass_hypr_text("hl.config({})\n", "lua", True)
 assert lua.count("YAKUSHI ROFI GLASS BEGIN") == 1
@@ -180,6 +196,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert ok
     assert "YAKUSHI ROFI GLASS BEGIN" in hypr.read_text()
     assert "fixed-height: false;" in rofi_config.read_text()
+    assert "rgba(0, 0, 0, 14%)" in override.read_text()
     assert "rgba(14, 12, 13, 78%)" in override.read_text()
     assert "rgba(26, 20, 20, 22%)" in override.read_text()
     assert "rgba(35, 25, 25, 33%)" in override.read_text()
@@ -216,6 +233,111 @@ premium_override = _rofi_concrete_override(
 )
 assert "button-close {\n    background-color: transparent;" in premium_override
 assert "button-open {\n    background-color: rgba(54, 35, 36, 43%);" in premium_override
+assert "window {\n    transparency: \"real\";\n    background-color: rgba(0, 0, 0, 14%);" in premium_override
+assert "mainbox {\n    background-color: rgba(14, 12, 13, 78%);" in premium_override
+
+legacy_premium_override = _rofi_concrete_override(
+    "#0e0c0d",
+    0.78,
+    "#1a1414",
+    "#231919",
+    "#362324",
+    premium=True,
+    shadow=False,
+)
+assert "window {\n    transparency: \"real\";\n    background-color: rgba(14, 12, 13, 78%);" in legacy_premium_override
+assert "mainbox {\n    background-color: transparent;" in legacy_premium_override
+
+# Kitty Liquid Glass writes effective last-wins options and preserves FOLLOW
+# colors in the same transaction.
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
+    kitty = base / "kitty" / "kitty.conf"
+    kitty.parent.mkdir(parents=True)
+    kitty.write_text("background_opacity 1\nwindow_padding_width 4\n")
+    apps._active_kitty_config = lambda: kitty
+    apps._reload_kitty_config = lambda: None
+    apps.record = lambda *_args, **_kwargs: None
+
+    ok, _message = apps.kitty_apply_preset(
+        "liquid_glass",
+        KittyColorState("follow", "#0e0c0d", "#e8a29a", "#c86672"),
+    )
+    assert ok
+    kitty_text = kitty.read_text()
+    assert kitty_text.count("YAKUSHI KITTY STYLE: liquid_glass") == 1
+    assert apps._kitty_value(kitty_text, "background_opacity", "") == "0.78"
+    assert apps._kitty_value(kitty_text, "background_blur", "") == "32"
+    assert apps._kitty_value(kitty_text, "window_padding_width", "") == "12"
+    assert apps._kitty_value(kitty_text, "tab_bar_style", "") == "fade"
+    assert "# YAKUSHI KITTY COLOR MODE: follow" in kitty_text
+
+# Waybar gets the same material without changing its configured module lanes.
+base_waybar_style = (root / "integrations/waybar/style.css").read_text()
+liquid_waybar = _waybar_liquid_style(base_waybar_style)
+liquid_waybar_twice = _waybar_liquid_style(liquid_waybar)
+assert liquid_waybar_twice.count("YAKUSHI WAYBAR STYLE: liquid_glass") == 1
+assert liquid_waybar_twice.count("YAKUSHI WAYBAR LIQUID GLASS BEGIN") == 1
+assert "background-color: alpha(@surface, 0.58);" in liquid_waybar_twice
+assert "background-image: linear-gradient" in liquid_waybar_twice
+assert "box-shadow: 0 3px 10px" in liquid_waybar_twice
+assert "tooltip {" in liquid_waybar_twice
+
+waybar_lua = _waybar_glass_hypr_text("hl.config({})\n", "lua", True)
+assert waybar_lua.count("YAKUSHI WAYBAR GLASS BEGIN") == 1
+assert 'match        = { namespace = "waybar" }' in waybar_lua
+assert "ignore_alpha = 0.10" in waybar_lua
+assert "xray         = false" in waybar_lua
+assert "YAKUSHI WAYBAR GLASS" not in _waybar_glass_hypr_text(waybar_lua, "lua", False)
+
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
+    waybar_config = base / "waybar" / "config.jsonc"
+    waybar_style = base / "waybar" / "style.css"
+    hypr = base / "hypr" / "hyprland.lua"
+    waybar_config.parent.mkdir(parents=True)
+    hypr.parent.mkdir(parents=True)
+    bundled_config = (root / "integrations/waybar/config.jsonc").read_text()
+    waybar_config.write_text(bundled_config)
+    waybar_style.write_text(base_waybar_style)
+    hypr.write_text("hl.config({})\n")
+
+    apps.WAYBAR_CONFIG = waybar_config
+    apps.WAYBAR_STYLE = waybar_style
+    apps._rofi_hypr_config = lambda: (hypr, "lua")
+    apps.run = lambda command, timeout=5.0: subprocess.CompletedProcess(command, 0, "", "")
+    apps.record = lambda *_args, **_kwargs: None
+    apps.time.sleep = lambda _seconds: None
+
+    ok, _message = apps.waybar_apply_preset("liquid_glass")
+    assert ok
+    state = apps.waybar_load()
+    assert (state.height, state.margin_top, state.margin_left, state.spacing) == (34, 6, 10, 3)
+    assert state.opacity == 0.58
+    assert state.left == apps._module_array(bundled_config, "modules-left")
+    assert state.center == apps._module_array(bundled_config, "modules-center")
+    assert state.right == apps._module_array(bundled_config, "modules-right")
+    assert "YAKUSHI WAYBAR LIQUID GLASS BEGIN" in waybar_style.read_text()
+    assert "YAKUSHI WAYBAR GLASS BEGIN" in hypr.read_text()
+
+    waybar_config.write_text(bundled_config)
+    waybar_style.write_text(base_waybar_style)
+    hypr.write_text("hl.config({})\n")
+    waybar_configerror_calls = [0]
+
+    def waybar_run_with_new_config_error(command, timeout=5.0):
+        if command[:2] == ["hyprctl", "configerrors"]:
+            waybar_configerror_calls[0] += 1
+            output = "" if waybar_configerror_calls[0] == 1 else "new waybar test error"
+            return subprocess.CompletedProcess(command, 0, output, "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    apps.run = waybar_run_with_new_config_error
+    ok, _message = apps.waybar_apply_preset("liquid_glass")
+    assert not ok
+    assert waybar_config.read_text() == bundled_config
+    assert waybar_style.read_text() == base_waybar_style
+    assert hypr.read_text() == "hl.config({})\n"
 
 power = (root / "integrations/rofi/scripts/powermenu.sh").read_text()
 for action in ("lock", "suspend", "logout", "reboot", "shutdown"):

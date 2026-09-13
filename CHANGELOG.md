@@ -1,3 +1,11 @@
+# v1.2.29
+
+- Fixed Raycast Glass search relevance by using FZF scoring, disabling history bias, and narrowing desktop-entry matching so a contiguous query such as `spo` ranks Spotify ahead of unrelated fuzzy results.
+- Added a subtle compositor-safe outer shadow to the Rofi glass panel while keeping its existing size, click actions, theme synchronization, and Hyprland blur behavior intact.
+- Added one-click **LIQUID GLASS** presets to Bar Studio and Terminal Studio, with translucent gradients, restrained highlights/shadows, Waybar layer blur, and native Kitty background blur.
+- Kept Waybar module order/click actions and Kitty font/shell configuration intact when applying the new presets; both continue to follow the current Yakushi color palette.
+- Extended smoke coverage across Rofi relevance/shadow generation, idempotent Waybar styling and blur rules, and effective last-wins Kitty settings.
+
 # v1.2.28
 
 - Reworked Raycast Glass into a layered premium surface with neutral sans typography, subtle highlight gradients, softer hairline borders, and a branded footer.

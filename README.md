@@ -18,9 +18,9 @@ A lightweight GTK4 control deck and matching Waybar/Rofi setup for **Arch Linux 
 - Display layout, refresh rate, scale and position controls.
 - Keyboard and mouse controls with live Hyprland verification.
 - Balanced / Performance power management.
-- Tonal Theme Studio, **wallpaper-driven Auto Color (Dark/Light)**, desktop typography, wallpapers, reliable theme-aware Kitty colors, Fastfetch Studio (startup toggle, ASCII editor, module switches and logo positioning) and Rofi appearance, including a layered Raycast-inspired premium-glass launcher with validated Hyprland blur.
+- Tonal Theme Studio, **wallpaper-driven Auto Color (Dark/Light)**, desktop typography, wallpapers, reliable theme-aware Kitty colors, Fastfetch Studio (startup toggle, ASCII editor, module switches and logo positioning) and a coordinated **LIQUID GLASS** suite for the Raycast-inspired Rofi launcher, Waybar and Kitty.
 - Matching Hyprlock lock screen and Yakushi SDDM boot login theme.
-- Waybar drag-and-drop module ordering and enable/disable controls.
+- Waybar drag-and-drop module ordering, enable/disable controls and a one-click glass preset with validated Hyprland blur.
 - **Nautilus Studio** with reversible Hyprland-level window opacity control.
 - `REVERT LAST` history and automatic install backups.
 
@@ -144,6 +144,14 @@ MIT
 
 Launcher opacity is stored in `~/.config/rofi/yakushi-launcher-opacity.rasi` and imported last, so earlier theme rules cannot shadow the slider. The power menu keeps its separate `yakushi-opacity.rasi` window rule, preventing launcher presets from changing its five-action layout.
 
+Raycast Glass uses FZF result scoring without launch-history bias, so contiguous application-name matches rank predictably. Its visual shadow is an inset Rasi layer rather than an unsupported CSS property, leaving the compositor blur and native Rofi buttons intact.
+
+## Liquid Glass suite
+
+- **Rofi Studio → RAYCAST GLASS** applies the compact launcher, relevance tuning, subtle outer shadow and managed Hyprland layer blur.
+- **Bar Studio → LIQUID GLASS** applies translucent gradient module pills, hairline highlights, soft shadows and Waybar layer blur without changing module order or click actions.
+- **Terminal Studio → LIQUID GLASS** applies 78% tonal transparency, Kitty's native background blur, balanced padding and a fade tab bar. It also enables **FOLLOW YAKUSHI THEME** while preserving the configured font size and shell setup.
+
 
 ## Lock & Login
 
@@ -212,6 +220,8 @@ The **03 // APPS & KEYS → Terminal** page can now control Kitty colors as well
 - Fresh installs start in FOLLOW mode, while existing Kitty configs remain opt-in until the user applies Terminal Colors.
 
 Kitty opacity stays independent from color mode, so the liquid-glass transparency slider continues to work with either FOLLOW or CUSTOM colors.
+
+The **LIQUID GLASS** terminal preset adds native Kitty background blur, 12px content padding and a restrained fade tab bar while preserving the user's font size and shell configuration.
 
 ## Fastfetch Studio
 

@@ -117,8 +117,13 @@ def kitty_load() -> KittyState:
 
 def _kitty_set(text: str, key: str, value: str) -> str:
     pattern = rf'(?m)^\s*{re.escape(key)}\s+.+$'
-    if re.search(pattern, text):
-        return re.sub(pattern, f"{key} {value}", text, count=1)
+    matches = list(re.finditer(pattern, text))
+    if matches:
+        # Kitty uses last-assignment-wins semantics. Updating the final match
+        # keeps Yakushi effective even when a distro config defines the same
+        # option earlier in the file.
+        match = matches[-1]
+        return text[:match.start()] + f"{key} {value}" + text[match.end():]
 
     if text and not text.endswith("\n"):
         text += "\n"
@@ -352,6 +357,100 @@ def kitty_save(value: KittyState) -> tuple[bool, str]:
     return True, f"Kitty configuration updated: {config}"
 
 
+KITTY_STYLE_MARKER = "# YAKUSHI KITTY STYLE: liquid_glass"
+
+
+def _kitty_set_style_marker(text: str, name: str) -> str:
+    text = re.sub(
+        r"(?mi)^\s*#\s*YAKUSHI KITTY STYLE\s*:\s*[a-z0-9_-]+\s*$\n?",
+        "",
+        text,
+    ).rstrip()
+    if name == "liquid_glass":
+        text += ("\n\n" if text else "") + KITTY_STYLE_MARKER
+    return text.rstrip() + "\n"
+
+
+def kitty_apply_preset(
+    name: str,
+    colors: KittyColorState | None = None,
+) -> tuple[bool, str]:
+    key = str(name).strip().lower()
+    if key != "liquid_glass":
+        return False, "Unknown Kitty preset."
+
+    config = _active_kitty_config()
+    override = _kitty_override_for(config)
+    config_existed = config.exists()
+    override_existed = override.exists()
+    config_original = config.read_text() if config_existed else ""
+    override_original = override.read_text() if override_existed else ""
+    record("Kitty preset: LIQUID GLASS", files=[path for path in (config, override) if path.exists()])
+
+    def rollback() -> None:
+        if config_existed:
+            _write_preserving_symlink(config, config_original)
+        else:
+            try:
+                config.unlink()
+            except FileNotFoundError:
+                pass
+        if override_existed:
+            _write_preserving_symlink(override, override_original)
+        else:
+            try:
+                override.unlink()
+            except FileNotFoundError:
+                pass
+
+    try:
+        if colors is not None:
+            _write_kitty_color_block(config, override, colors)
+
+        text = config.read_text() if config.exists() else ""
+        text = _kitty_set_style_marker(text, key)
+        settings = {
+            "background_opacity": "0.78",
+            "background_blur": "32",
+            "dynamic_background_opacity": "yes",
+            "window_padding_width": "12",
+            "single_window_padding_width": "12",
+            "window_margin_width": "0",
+            "placement_strategy": "center",
+            "window_border_width": "1pt",
+            "draw_minimal_borders": "yes",
+            "inactive_text_alpha": "0.82",
+            "tab_bar_edge": "top",
+            "tab_bar_style": "fade",
+            "tab_fade": "0.20 0.45 0.70 1",
+            "tab_bar_margin_width": "8",
+            "tab_bar_margin_height": "6 0",
+            "tab_bar_align": "left",
+            "tab_bar_show_new_tab_button": "no",
+            "active_tab_font_style": "bold",
+            "inactive_tab_font_style": "normal",
+        }
+        for option, setting in settings.items():
+            text = _kitty_set(text, option, setting)
+        _write_preserving_symlink(config, text)
+
+        verify = config.read_text()
+        missing = [
+            option
+            for option, setting in settings.items()
+            if _kitty_value(verify, option, "") != setting
+        ]
+        if KITTY_STYLE_MARKER not in verify or missing:
+            rollback()
+            return False, "Kitty Liquid Glass verification failed for: " + ", ".join(missing or ["style marker"])
+    except Exception as exc:
+        rollback()
+        return False, f"Kitty Liquid Glass could not be applied: {exc}"
+
+    _reload_kitty_config()
+    return True, "Kitty LIQUID GLASS applied with 78% transparency, Wayland blur, spacious padding and a soft fade tab bar. Reopen Kitty if the current window cannot reload opacity."
+
+
 # ---------- Rofi ----------
 
 @dataclass
@@ -570,6 +669,7 @@ def _rofi_theme_text(name: str, font: str) -> str:
     key, _title, _description, spec = _rofi_theme_spec(name)
     font = str(spec.get("font", font or "JetBrainsMono Nerd Font 12")).replace('"', "")
     is_raycast = spec.get("layout") == "raycast"
+    shadow_marker = "/* YAKUSHI ROFI SHADOW: inset */\n" if is_raycast else ""
     main_children = (
         "[ inputbar, textbox-section, message, listview, footer ]"
         if is_raycast
@@ -585,10 +685,38 @@ def _rofi_theme_text(name: str, font: str) -> str:
         '    display-filebrowser: "󰉋 ";\n'
         '    display-window: "󰖯 ";\n'
         '    matching: "fuzzy";\n'
+        '    sorting-method: "fzf";\n'
         '    sort: true;\n'
+        '    disable-history: true;\n'
+        '    drun-match-fields: "name,generic,exec";\n'
         if is_raycast
         else ""
     )
+    # Rasi has no CSS box-shadow property. For Raycast Glass the outer window
+    # is therefore a slim, dark translucent halo and the actual glass panel is
+    # the inset mainbox. This produces a compositor-safe shadow without
+    # changing the launcher layer namespace or relying on unsupported syntax.
+    if is_raycast:
+        window_background = "transparent"
+        window_border = 0
+        window_border_color = "transparent"
+        window_radius = int(spec["window_radius"]) + 6
+        window_padding = "4px 5px 8px 5px"
+        mainbox_style = (
+            "    background-color: @yak-rofi-bg;\n"
+            "    background-image: linear-gradient(to bottom, white/6%, black/5%);\n"
+            "    border: 1px;\n"
+            "    border-color: white/13%;\n"
+            f'    border-radius: {int(spec["window_radius"])}px;\n'
+            f'    padding: {spec["window_padding"]}px;\n'
+        )
+    else:
+        window_background = "@yak-rofi-bg"
+        window_border = int(spec["window_border"])
+        window_border_color = "@yak-border"
+        window_radius = int(spec["window_radius"])
+        window_padding = f'{spec["window_padding"]}px'
+        mainbox_style = "    background-color: transparent;\n"
     raycast_widgets = (
         """
 
@@ -599,11 +727,6 @@ textbox-section {
     text-color: white/42%;
     font: "Sans Bold 9";
     padding: 10px 11px 5px 11px;
-}
-
-window {
-    border-color: white/13%;
-    background-image: linear-gradient(to bottom, white/6%, black/5%);
 }
 
 inputbar {
@@ -708,7 +831,7 @@ button-open {
         else ""
     )
     return f"""/* YAKUSHI ROFI THEME: {key} */
-/* Geometry comes from Rofi Studio; all colors come from Theme Studio. */
+{shadow_marker}/* Geometry comes from Rofi Studio; all colors come from Theme Studio. */
 @import "../hypr/colors.rasi"
 
 configuration {{
@@ -735,17 +858,16 @@ configuration {{
 
 window {{
     transparency: "real";
-    background-color: @yak-rofi-bg;
-    border: {spec["window_border"]}px;
-    border-color: @yak-border;
-    border-radius: {spec["window_radius"]}px;
+    background-color: {window_background};
+    border: {window_border}px;
+    border-color: {window_border_color};
+    border-radius: {window_radius}px;
     width: {spec["width"]}px;
-    padding: {spec["window_padding"]}px;
+    padding: {window_padding};
 }}
 
 mainbox {{
-    background-color: transparent;
-    children: {main_children};
+{mainbox_style}    children: {main_children};
     spacing: {spec["main_spacing"]}px;
 }}
 
@@ -883,7 +1005,12 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
     base = base_match.group(0) if base_match else "#1a1414"
     atomic_write(
         ROFI_LAUNCHER_OPACITY_OVERRIDE,
-        _rofi_override_text(base, theme_opacity, premium=key == "raycast_glass"),
+        _rofi_override_text(
+            base,
+            theme_opacity,
+            premium=key == "raycast_glass",
+            shadow=key == "raycast_glass",
+        ),
     )
 
     def rollback(*, restore_hypr: bool = False) -> None:
@@ -1037,6 +1164,7 @@ def _rofi_override_text(
     surface_alt: str | None = None,
     hover: str | None = None,
     premium: bool | None = None,
+    shadow: bool | None = None,
 ) -> str:
     # The Rofi opacity slider remains the master alpha. Raycast Glass uses
     # lighter subordinate layers so nested surfaces do not composite back into
@@ -1055,6 +1183,8 @@ def _rofi_override_text(
             ROFI_CONFIG.exists()
             and "/* YAKUSHI ROFI THEME: raycast_glass */" in ROFI_CONFIG.read_text()
         )
+    if shadow is None:
+        shadow = premium
 
     surface_opacity = opacity * 0.28 if premium else opacity
     surface_alt_opacity = opacity * 0.42 if premium else opacity
@@ -1063,16 +1193,19 @@ def _rofi_override_text(
     surface_rgba = _rgba_rasi(surface, surface_opacity)
     surface_alt_rgba = _rgba_rasi(surface_alt, surface_alt_opacity)
     hover_rgba = _rgba_rasi(hover, hover_opacity)
+    shadow_rgba = _rgba_rasi("#000000", opacity * 0.18)
+    window_background = shadow_rgba if premium and shadow else window_rgba
+    mainbox_background = window_rgba if premium and shadow else "transparent"
     close_background = "transparent" if premium else surface_alt_rgba
 
     return (
         "/* Generated by Yakushi Control Deck. Keep this import last. */\n"
         "window {\n"
         '    transparency: "real";\n'
-        f"    background-color: {window_rgba};\n"
+        f"    background-color: {window_background};\n"
         "}\n"
         "mainbox {\n"
-        "    background-color: transparent;\n"
+        f"    background-color: {mainbox_background};\n"
         "}\n"
         "inputbar {\n"
         f"    background-color: {surface_alt_rgba};\n"
@@ -1122,6 +1255,8 @@ def _ensure_rofi_override_import(text: str) -> str:
 def rofi_load() -> RofiState:
     text = ROFI_CONFIG.read_text() if ROFI_CONFIG.exists() else ""
     colors = HYPR_COLORS_RASI.read_text() if HYPR_COLORS_RASI.exists() else ""
+    premium = "/* YAKUSHI ROFI THEME: raycast_glass */" in text
+    inset_shadow = premium and "/* YAKUSHI ROFI SHADOW: inset */" in text
 
     font = _configuration_prop(text, "font", '"JetBrainsMono Nerd Font 12"').strip('"')
 
@@ -1139,7 +1274,8 @@ def rofi_load() -> RofiState:
         override = ROFI_OPACITY_OVERRIDE.read_text()
     else:
         override = ""
-    opacity_source = _rasi_prop(override, "window", "background-color", "") if override else ""
+    opacity_block = "mainbox" if inset_shadow else "window"
+    opacity_source = _rasi_prop(override, opacity_block, "background-color", "") if override else ""
     if not opacity_source:
         opacity_source = _named_rasi_color(colors, "yak-rofi-bg")
     if not opacity_source:
@@ -1148,8 +1284,8 @@ def rofi_load() -> RofiState:
     return RofiState(
         font=font,
         width=_px(_rasi_prop(text, "window", "width", "650px"), 650),
-        radius=_px(_rasi_prop(text, "window", "border-radius", "14px"), 14),
-        padding=_px(_rasi_prop(text, "window", "padding", "25px"), 25),
+        radius=_px(_rasi_prop(text, "mainbox" if inset_shadow else "window", "border-radius", "14px"), 14),
+        padding=_px(_rasi_prop(text, "mainbox" if inset_shadow else "window", "padding", "25px"), 25),
         lines=lines,
         opacity=_opacity_from_color(opacity_source),
     )
@@ -1200,23 +1336,42 @@ def rofi_save(value: RofiState) -> tuple[bool, str]:
     )
     text = original
     colors = colors_original
+    premium = "/* YAKUSHI ROFI THEME: raycast_glass */" in original
+    inset_shadow = premium and "/* YAKUSHI ROFI SHADOW: inset */" in original
+    panel_block = "mainbox" if inset_shadow else "window"
 
     base = _named_rasi_color(colors, "yak-bg") or _named_rasi_color(colors, "bg") or "#1a1414"
     base_match = re.search(r'#[0-9a-fA-F]{6}', base)
     base = base_match.group(0) if base_match else "#1a1414"
     alpha = round(max(0.0, min(1.0, value.opacity)) * 255)
     rofi_bg = base + f"{alpha:02x}"
-    override = _rofi_override_text(base, value.opacity)
+    override = _rofi_override_text(
+        base,
+        value.opacity,
+        premium=premium,
+        shadow=inset_shadow,
+    )
 
     operations = [
         lambda value_text: _set_rasi_configuration(value_text, "font", f'"{value.font}"'),
         lambda value_text: _set_or_add_rasi_block(value_text, "window", "transparency", '"real"'),
-        lambda value_text: _set_or_add_rasi_block(value_text, "window", "background-color", "@yak-rofi-bg" if HYPR_COLORS_RASI.exists() else rofi_bg),
+        lambda value_text: _set_or_add_rasi_block(value_text, panel_block, "background-color", "@yak-rofi-bg" if HYPR_COLORS_RASI.exists() else rofi_bg),
         lambda value_text: _set_rasi_block(value_text, "window", "width", f"{value.width}px"),
-        lambda value_text: _set_rasi_block(value_text, "window", "border-radius", f"{value.radius}px"),
-        lambda value_text: _set_rasi_block(value_text, "window", "padding", f"{value.padding}px"),
+        lambda value_text: _set_rasi_block(value_text, panel_block, "border-radius", f"{value.radius}px"),
+        lambda value_text: _set_rasi_block(value_text, panel_block, "padding", f"{value.padding}px"),
         lambda value_text: _set_rasi_block(value_text, "listview", "lines", str(value.lines)),
     ]
+
+    if inset_shadow:
+        operations.insert(
+            -1,
+            lambda value_text: _set_rasi_block(
+                value_text,
+                "window",
+                "border-radius",
+                f"{value.radius + 6}px",
+            ),
+        )
 
     for operation in operations:
         text, ok = operation(text)
@@ -1261,6 +1416,186 @@ def rofi_save(value: RofiState) -> tuple[bool, str]:
 
 
 # ---------- Waybar ----------
+
+WAYBAR_STYLE_MARKER = "/* YAKUSHI WAYBAR STYLE: liquid_glass */"
+WAYBAR_LIQUID_BEGIN = "/* YAKUSHI WAYBAR LIQUID GLASS BEGIN */"
+WAYBAR_LIQUID_END = "/* YAKUSHI WAYBAR LIQUID GLASS END */"
+WAYBAR_GLASS_LUA_BEGIN = "-- YAKUSHI WAYBAR GLASS BEGIN"
+WAYBAR_GLASS_LUA_END = "-- YAKUSHI WAYBAR GLASS END"
+WAYBAR_GLASS_CONF_BEGIN = "# YAKUSHI WAYBAR GLASS BEGIN"
+WAYBAR_GLASS_CONF_END = "# YAKUSHI WAYBAR GLASS END"
+
+
+def _remove_waybar_glass_rule(text: str) -> str:
+    patterns = (
+        r"(?ms)^\s*-- YAKUSHI WAYBAR GLASS BEGIN.*?^\s*-- YAKUSHI WAYBAR GLASS END[^\n]*\n?",
+        r"(?ms)^\s*# YAKUSHI WAYBAR GLASS BEGIN.*?^\s*# YAKUSHI WAYBAR GLASS END[^\n]*\n?",
+    )
+    for pattern in patterns:
+        text = re.sub(pattern, "", text)
+    return text
+
+
+def _waybar_glass_rule(style: str) -> str:
+    if style == "lua":
+        return f'''{WAYBAR_GLASS_LUA_BEGIN}
+-- Managed by Yakushi Control Deck. Blur strength stays under Appearance.
+hl.layer_rule({{
+    name         = "yakushi-waybar-glass",
+    match        = {{ namespace = "waybar" }},
+    blur         = true,
+    ignore_alpha = 0.10,
+    xray         = false,
+}})
+{WAYBAR_GLASS_LUA_END}'''
+    return f'''{WAYBAR_GLASS_CONF_BEGIN}
+# Managed by Yakushi Control Deck. Blur strength stays under Appearance.
+layerrule {{
+    name = yakushi-waybar-glass
+    match:namespace = waybar
+    blur = true
+    ignore_alpha = 0.10
+    xray = false
+}}
+{WAYBAR_GLASS_CONF_END}'''
+
+
+def _waybar_glass_hypr_text(text: str, style: str, enabled: bool) -> str:
+    cleaned = _remove_waybar_glass_rule(text)
+    if not enabled:
+        return cleaned
+    return cleaned.rstrip() + "\n\n" + _waybar_glass_rule(style) + "\n"
+
+
+def _set_css_rule_prop(
+    text: str,
+    selector_start: str,
+    prop: str,
+    value: str,
+) -> tuple[str, bool]:
+    start = text.find(selector_start)
+    if start < 0:
+        return text, False
+    opening = text.find("{", start)
+    closing = text.find("}", opening + 1)
+    if opening < 0 or closing < 0:
+        return text, False
+
+    body = text[opening + 1:closing]
+    # Properties in many user Waybar themes share a compact one-line rule.
+    # Match after whitespace or a semicolon as well as at line starts, while
+    # avoiding partial hits such as `border` inside `border-radius`.
+    pattern = rf'(?m)(?<![\w-])({re.escape(prop)}\s*:\s*)[^;]+;'
+    matches = list(re.finditer(pattern, body))
+    if matches:
+        match = matches[-1]
+        body = body[:match.start()] + f"{match.group(1)}{value};" + body[match.end():]
+    else:
+        if body and not body.endswith("\n"):
+            body += "\n"
+        body += f"    {prop}: {value};\n"
+    return text[:opening + 1] + body + text[closing:], True
+
+
+def _waybar_liquid_style(text: str) -> str:
+    text = re.sub(
+        r"(?mi)^\s*/\*\s*YAKUSHI WAYBAR STYLE\s*:\s*[a-z0-9_-]+\s*\*/\s*$\n?",
+        "",
+        text,
+    )
+    text = re.sub(
+        r"(?ms)^\s*/\* YAKUSHI WAYBAR LIQUID GLASS BEGIN \*/.*?^\s*/\* YAKUSHI WAYBAR LIQUID GLASS END \*/[^\n]*\n?",
+        "",
+        text,
+    ).rstrip()
+
+    import_match = re.search(r'(?m)^\s*@import\s+[^;]+;\s*$', text)
+    if import_match:
+        text = text[:import_match.end()] + "\n" + WAYBAR_STYLE_MARKER + text[import_match.end():]
+    else:
+        text = WAYBAR_STYLE_MARKER + "\n" + text
+
+    common = "#custom-launcher,"
+    for prop, value in (
+        ("background-color", "alpha(@surface, 0.58)"),
+        ("background-image", "linear-gradient(to bottom, alpha(@fg, 0.07), alpha(@bg, 0.03))"),
+        ("color", "@fg"),
+        ("border", "1px solid alpha(@fg, 0.14)"),
+        ("border-radius", "12px"),
+        ("padding", "2px 9px"),
+        ("margin", "4px 2px"),
+        ("box-shadow", "0 3px 10px alpha(@bg, 0.42), inset 0 1px alpha(@fg, 0.06)"),
+    ):
+        text, ok = _set_css_rule_prop(text, common, prop, value)
+        if not ok:
+            raise ValueError("Waybar module surface rule was not found")
+
+    for selector, properties in (
+        (
+            "#workspaces button {",
+            (
+                ("padding", "0 8px"),
+                ("color", "alpha(@fg, 0.78)"),
+                ("border-radius", "8px"),
+                ("background-color", "transparent"),
+            ),
+        ),
+        (
+            "#workspaces button.active {",
+            (
+                ("background-color", "alpha(@accent, 0.72)"),
+                ("background-image", "linear-gradient(to bottom, alpha(@fg, 0.12), alpha(@bg, 0.04))"),
+                ("color", "@selected_fg"),
+                ("box-shadow", "inset 0 1px alpha(@fg, 0.10), 0 2px 7px alpha(@bg, 0.28)"),
+            ),
+        ),
+        (
+            "#workspaces button:hover {",
+            (
+                ("background-color", "alpha(@hover_bg, 0.62)"),
+                ("background-image", "linear-gradient(to bottom, alpha(@fg, 0.08), transparent)"),
+                ("color", "@fg"),
+            ),
+        ),
+    ):
+        for prop, value in properties:
+            text, ok = _set_css_rule_prop(text, selector, prop, value)
+            if not ok:
+                raise ValueError(f"Waybar CSS rule was not found: {selector}")
+
+    managed = f'''
+
+{WAYBAR_LIQUID_BEGIN}
+window#waybar {{
+    background-color: transparent;
+}}
+
+#custom-launcher {{
+    color: @accent;
+    text-shadow: 0 1px 8px alpha(@accent, 0.28);
+}}
+
+#custom-power {{
+    color: @accent;
+    text-shadow: 0 1px 8px alpha(@accent, 0.28);
+}}
+
+tooltip {{
+    background-color: alpha(@surface, 0.84);
+    background-image: linear-gradient(to bottom, alpha(@fg, 0.07), alpha(@bg, 0.04));
+    color: @fg;
+    border: 1px solid alpha(@fg, 0.14);
+    border-radius: 12px;
+    box-shadow: 0 6px 18px alpha(@bg, 0.48), inset 0 1px alpha(@fg, 0.06);
+}}
+
+tooltip label {{
+    color: @fg;
+    padding: 5px 7px;
+}}
+{WAYBAR_LIQUID_END}
+'''
+    return text.rstrip() + managed + "\n"
 
 @dataclass
 class WaybarState:
@@ -1427,3 +1762,110 @@ def waybar_save(value: WaybarState) -> tuple[bool, str]:
     run(["pkill", "-x", "waybar"], timeout=2.0)
     run(["sh", "-lc", "nohup waybar >/tmp/yakushi-waybar.log 2>&1 &"], timeout=2.0)
     return True, "Waybar configuration updated."
+
+
+def waybar_apply_preset(name: str) -> tuple[bool, str]:
+    key = str(name).strip().lower()
+    if key != "liquid_glass":
+        return False, "Unknown Waybar preset."
+    if not WAYBAR_CONFIG.exists() or not WAYBAR_STYLE.exists():
+        return False, "Waybar config or style file was not found."
+
+    config_original = WAYBAR_CONFIG.read_text()
+    style_original = WAYBAR_STYLE.read_text()
+    config = config_original
+    for prop, value in (
+        ("height", 34),
+        ("margin-top", 6),
+        ("margin-left", 10),
+        ("margin-right", 10),
+        ("spacing", 3),
+    ):
+        config, ok = _set_json_number(config, prop, value)
+        if not ok:
+            return False, f'Waybar property "{prop}" was not found.'
+
+    try:
+        style = _waybar_liquid_style(style_original)
+        style, ok = _set_css_rule_prop(style, "* {", "font-size", "12px")
+        if not ok:
+            raise ValueError("Waybar global font rule was not found")
+    except Exception as exc:
+        return False, f"Waybar LIQUID GLASS could not be generated: {exc}"
+
+    hypr_config, hypr_style = _rofi_hypr_config()
+    hypr_original = hypr_config.read_text() if hypr_config is not None else ""
+    hypr_updated = (
+        _waybar_glass_hypr_text(hypr_original, hypr_style, True)
+        if hypr_config is not None and hypr_style is not None
+        else hypr_original
+    )
+    hypr_changed = hypr_config is not None and hypr_updated != hypr_original
+    before_errors = (
+        run(["hyprctl", "configerrors"], timeout=3.0).stdout.strip()
+        if hypr_changed
+        else ""
+    )
+
+    files = [WAYBAR_CONFIG, WAYBAR_STYLE]
+    if hypr_changed and hypr_config is not None:
+        files.append(hypr_config)
+    record("Waybar preset: LIQUID GLASS", files=files)
+
+    def rollback(*, restore_hypr: bool = False) -> None:
+        atomic_write(WAYBAR_CONFIG, config_original)
+        atomic_write(WAYBAR_STYLE, style_original)
+        if restore_hypr and hypr_changed and hypr_config is not None:
+            _write_preserving_symlink(hypr_config, hypr_original)
+            run(["hyprctl", "reload"], timeout=5.0)
+        run(["pkill", "-x", "waybar"], timeout=2.0)
+        run(["sh", "-lc", "nohup waybar >/tmp/yakushi-waybar.log 2>&1 &"], timeout=2.0)
+
+    try:
+        atomic_write(WAYBAR_CONFIG, config)
+        atomic_write(WAYBAR_STYLE, style)
+        written_config = WAYBAR_CONFIG.read_text()
+        written_style = WAYBAR_STYLE.read_text()
+        expected_numbers = {
+            "height": 34,
+            "margin-top": 6,
+            "margin-left": 10,
+            "margin-right": 10,
+            "spacing": 3,
+        }
+        bad_numbers = [
+            prop
+            for prop, expected in expected_numbers.items()
+            if _json_number(written_config, prop, -1) != expected
+        ]
+        if bad_numbers or WAYBAR_STYLE_MARKER not in written_style:
+            raise ValueError(
+                "verification failed for "
+                + ", ".join(bad_numbers or ["style marker"])
+            )
+    except Exception as exc:
+        rollback()
+        return False, f"Waybar LIQUID GLASS write failed; previous files were restored: {exc}"
+
+    if hypr_changed and hypr_config is not None:
+        try:
+            _write_preserving_symlink(hypr_config, hypr_updated)
+        except Exception as exc:
+            rollback(restore_hypr=True)
+            return False, f"Waybar blur rule could not be written; previous files were restored: {exc}"
+        reload_proc = run(["hyprctl", "reload"], timeout=5.0)
+        if reload_proc.returncode != 0:
+            rollback(restore_hypr=True)
+            return False, "Hyprland rejected the Waybar blur rule. Waybar and compositor settings were restored."
+
+        time.sleep(0.20)
+        after_errors = run(["hyprctl", "configerrors"], timeout=3.0).stdout.strip()
+        if after_errors and after_errors != before_errors:
+            rollback(restore_hypr=True)
+            return False, f"A new Hyprland config error appeared. Changes were rolled back: {after_errors}"
+
+    run(["pkill", "-x", "waybar"], timeout=2.0)
+    run(["sh", "-lc", "nohup waybar >/tmp/yakushi-waybar.log 2>&1 &"], timeout=2.0)
+    if hypr_config is None:
+        return True, "Waybar LIQUID GLASS applied. No Hyprland config was found, so compositor blur was not changed."
+    return True, "Waybar LIQUID GLASS applied with translucent gradient pills, soft shadows and Hyprland layer blur."

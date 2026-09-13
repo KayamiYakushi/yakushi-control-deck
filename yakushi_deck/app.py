@@ -657,8 +657,11 @@ def main():
         }
 
         .terminal-preview {
-            background-color: #070809;
-            border: 1px solid #29272a;
+            background-color: rgba(7, 8, 9, 0.78);
+            background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.04));
+            border: 1px solid rgba(255, 255, 255, 0.13);
+            border-radius: 14px;
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 8px 22px rgba(0, 0, 0, 0.28);
             padding: 14px;
         }
 
@@ -1170,9 +1173,11 @@ def main():
         }
 
         .waybar-preview {
-            background: #08090a;
-            border: 1px solid #2b292c;
-            border-radius: 4px;
+            background-color: rgba(8, 9, 10, 0.62);
+            background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.04));
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.04), 0 8px 20px rgba(0, 0, 0, 0.26);
             padding: 10px 12px;
         }
 
@@ -1181,9 +1186,11 @@ def main():
         }
 
         .waybar-preview-chip {
-            background: #0e1011;
-            border: 1px solid #343136;
-            border-radius: 999px;
+            background-color: rgba(24, 22, 23, 0.68);
+            background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.03));
+            border: 1px solid rgba(255, 255, 255, 0.13);
+            border-radius: 12px;
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.04), 0 3px 9px rgba(0, 0, 0, 0.24);
             padding: 4px 8px;
         }
 
