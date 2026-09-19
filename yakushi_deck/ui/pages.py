@@ -540,7 +540,7 @@ class WaybarMiniPreview(Gtk.Box):
         bg_rgb = tuple(int(palette.surface[index:index + 2], 16) for index in (1, 3, 5))
         alpha = max(0.15, min(1.0, float(value.opacity)))
         border = "1px solid rgba(232, 162, 154, 0.34)" if value.outline else "none"
-        shadow = "0 4px 12px rgba(0, 0, 0, 0.48)" if value.shadow else "none"
+        shadow = "0 2px 4px -2px rgba(0, 0, 0, 0.42)" if value.shadow else "none"
         self._provider.load_from_data((
             f"#{self.preview_name} {{ min-height: {max(28, min(60, int(value.height)))}px; }}\n"
             ".waybar-preview-chip { "

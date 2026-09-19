@@ -313,7 +313,7 @@ assert liquid_waybar_twice.count("YAKUSHI WAYBAR STYLE: liquid_glass") == 1
 assert liquid_waybar_twice.count("YAKUSHI WAYBAR LIQUID GLASS BEGIN") == 1
 assert "background-color: alpha(@surface, 0.58);" in liquid_waybar_twice
 assert "background-image: linear-gradient" in liquid_waybar_twice
-assert "box-shadow: 0 3px 10px" in liquid_waybar_twice
+assert "box-shadow: 0 2px 4px -2px" in liquid_waybar_twice
 assert "tooltip {" in liquid_waybar_twice
 
 waybar_lua = _waybar_glass_hypr_text("hl.config({})\n", "lua", True)

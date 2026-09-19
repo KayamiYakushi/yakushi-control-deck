@@ -1591,7 +1591,7 @@ def _waybar_liquid_style(text: str) -> str:
         ("border-radius", "12px"),
         ("padding", "2px 9px"),
         ("margin", "4px 2px"),
-        ("box-shadow", "0 3px 10px alpha(@bg, 0.42), inset 0 1px alpha(@fg, 0.06)"),
+        ("box-shadow", "0 2px 4px -2px alpha(@bg, 0.38), inset 0 1px alpha(@fg, 0.06)"),
     ):
         text, ok = _set_css_rule_prop(text, common, prop, value)
         if not ok:
@@ -1613,7 +1613,7 @@ def _waybar_liquid_style(text: str) -> str:
                 ("background-color", "alpha(@accent, 0.72)"),
                 ("background-image", "linear-gradient(to bottom, alpha(@fg, 0.12), alpha(@bg, 0.04))"),
                 ("color", "@selected_fg"),
-                ("box-shadow", "inset 0 1px alpha(@fg, 0.10), 0 2px 7px alpha(@bg, 0.28)"),
+                ("box-shadow", "inset 0 1px alpha(@fg, 0.10), 0 1px 3px -1px alpha(@bg, 0.24)"),
             ),
         ),
         (
@@ -1741,7 +1741,7 @@ def _waybar_style_with_state(style: str, value: WaybarState) -> tuple[str, str |
         ("border", outline if value.outline else "none", "#custom-launcher,"),
         (
             "box-shadow",
-            "0 3px 10px alpha(@bg, 0.42), inset 0 1px alpha(@fg, 0.06)" if value.shadow else "none",
+            "0 2px 4px -2px alpha(@bg, 0.38), inset 0 1px alpha(@fg, 0.06)" if value.shadow else "none",
             "#custom-launcher,",
         ),
     )
