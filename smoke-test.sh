@@ -115,8 +115,13 @@ from yakushi_deck.core.apps import (
     rofi_theme_presets,
 )
 
-presets = {key: (title, description) for key, title, description in rofi_theme_presets()}
-assert "raycast_glass" in presets
+preset_keys = [key for key, _title, _description in rofi_theme_presets()]
+assert preset_keys == ["signature", "raycast_glass"]
+signature = _rofi_theme_text("signature", "JetBrainsMono Nerd Font 12")
+assert "/* YAKUSHI ROFI THEME: signature */" in signature
+assert "children: [ inputbar, listview ];" in signature
+assert "textbox-section" not in signature
+assert "footer {" not in signature
 raycast = _rofi_theme_text("raycast_glass", "JetBrainsMono Nerd Font 12")
 assert "/* YAKUSHI ROFI THEME: raycast_glass */" in raycast
 assert "/* YAKUSHI ROFI SHADOW: inset */" not in raycast
@@ -240,6 +245,9 @@ with tempfile.TemporaryDirectory() as directory:
     apps.ROFI_CONFIG = rofi_config
     apps.ROFI_LAUNCHER_OPACITY_OVERRIDE = override
     apps.HYPR_COLORS_RASI = colors
+    rofi_config.write_text("/* YAKUSHI ROFI THEME: compact */\n")
+    assert apps.rofi_current_theme() == "signature"
+    rofi_config.write_text("ORIGINAL THEME\n")
     apps._rofi_hypr_config = lambda: (hypr, "lua")
     apps.rofi_load = lambda: RofiState(
         font="JetBrainsMono Nerd Font 12",
@@ -297,6 +305,20 @@ with tempfile.TemporaryDirectory() as directory:
     assert "padding: 14px;" in staged_text
     assert "lines: 5;" in staged_text
     assert "rgba(14, 12, 13, 66%)" in override.read_text()
+
+    signature_state = RofiState(
+        font="JetBrainsMono Nerd Font 12",
+        width=600,
+        radius=18,
+        padding=16,
+        lines=7,
+        opacity=0.92,
+    )
+    ok, _message = apps.rofi_apply_theme("signature", signature_state)
+    assert ok
+    assert "/* YAKUSHI ROFI THEME: signature */" in rofi_config.read_text()
+    assert "textbox-section" not in rofi_config.read_text()
+    assert "YAKUSHI ROFI GLASS" not in hypr.read_text()
 
     rofi_config.write_text("ORIGINAL THEME\n")
     override.write_text("ORIGINAL OVERRIDE\n")
@@ -436,6 +458,7 @@ with tempfile.TemporaryDirectory() as directory:
     # lanes must survive applying the Liquid Glass preset in the same commit.
     staged = replace(
         state,
+        opacity=0.41,
         outline=False,
         shadow=True,
         left=list(reversed(state.left)),
@@ -443,6 +466,7 @@ with tempfile.TemporaryDirectory() as directory:
     ok, _message = apps.waybar_apply_preset("liquid_glass", staged)
     assert ok
     staged_result = apps.waybar_load()
+    assert staged_result.opacity == 0.41
     assert staged_result.outline is False
     assert staged_result.shadow is True
     assert staged_result.left == staged.left
@@ -450,6 +474,12 @@ with tempfile.TemporaryDirectory() as directory:
     surface_shadow = apps._waybar_surface_prop(waybar_style.read_text(), "box-shadow")
     assert surface == "none"
     assert surface_shadow != "none"
+
+    saved = replace(staged_result, opacity=0.73)
+    ok, _message = apps.waybar_save(saved)
+    assert ok
+    assert apps.waybar_load().opacity == 0.73
+    assert "background-color: alpha(@surface, 0.73);" in waybar_style.read_text()
 
     waybar_config.write_text(bundled_config)
     waybar_style.write_text(base_waybar_style)
@@ -509,6 +539,9 @@ assert 'add_css_class("deck-slider")' in common
 assert "scale.deck-slider:focus" in source
 assert "outline-color: transparent" in source
 assert "class SelfDestructionPage" in pages
+assert '"// WAYBAR OPACITY"' in pages
+assert '"Bar surface opacity"' in pages
+assert '"Module opacity"' not in pages
 for live_page in ("SessionLivePreview", "preview_liquid_glass", "preview_theme", "_refresh_live_preview"):
     assert live_page in pages
 

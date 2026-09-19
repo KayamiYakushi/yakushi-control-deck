@@ -4,6 +4,7 @@ This release makes previews honest, gives Bar Studio explicit surface controls, 
 
 ## Raycast and Waybar polish
 
+- Rofi Studio now presents only **SIGNATURE** and **RAYCAST GLASS**, removing three redundant intermediate cards and keeping both remaining Apply paths under regression coverage.
 - Raycast Glass again uses its original compact single-panel composition, fine border and highlight gradients. The temporary inset faux-shadow wrapper has been removed without losing live staging, search relevance tuning or Hyprland blur.
 - The restored Raycast Glass style is the bundled install/update default.
 - Install and update now ensure Raycast's managed Hyprland layer-blur rule is present, back up the compositor config before touching it, and roll back a rejected live reload. Saving Raycast fine tuning repairs the rule too, while its original 78% glass balance remains unchanged.
@@ -18,7 +19,7 @@ This release makes previews honest, gives Bar Studio explicit surface controls, 
 
 ## Waybar control
 
-Bar Studio now exposes independent **Module outline** and **Module shadow** switches. Fresh installs and the Liquid Glass preset use outline off and shadow on. Module order and click actions remain unchanged, and all writes retain the existing validation and rollback path.
+Bar Studio now exposes a dedicated live **Waybar opacity** card plus independent **Module outline** and **Module shadow** switches. Fresh installs and the Liquid Glass preset use 0.58 opacity, outline off and shadow on. Module order and click actions remain unchanged, and all writes retain the existing validation and rollback path.
 
 ## Self Destruction
 

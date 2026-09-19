@@ -3046,7 +3046,7 @@ class RofiPage(Page):
 
         themes = card(
             "// ROFI THEMES",
-            "Presets change launcher geometry and surface treatment. Colors follow Theme Studio; opacity stays independent. Raycast Glass safely adds its own Hyprland layer-blur rule; blur strength stays in Appearance."
+            "Two maintained launcher styles: Signature for a clean tonal surface, and Raycast Glass for the full command-bar treatment. Selection updates the live preview; files change only when you press Apply."
         )
         theme_grid = Gtk.Grid(column_spacing=10, row_spacing=10)
         theme_grid.set_column_homogeneous(True)
@@ -3450,6 +3450,18 @@ class WaybarPage(Page):
         preview_card.append(self.preview)
         self.append(preview_card)
 
+        self.opacity = slider(current.opacity, 0.15, 1.0, 0.01)
+        opacity_card = card(
+            "// WAYBAR OPACITY",
+            "Adjust every Waybar module surface together. Lower values reveal the desktop and, with Liquid Glass, more compositor blur. The live preview updates before Apply."
+        )
+        opacity_card.append(setting_row(
+            "Bar surface opacity",
+            self.opacity,
+            "1.00 is fully opaque. The Liquid Glass default is 0.58.",
+        ))
+        self.append(opacity_card)
+
         presets = card(
             "// BAR PRESETS",
             "Apply the same Raycast-like material language to Waybar while keeping your module order and click actions intact."
@@ -3484,7 +3496,6 @@ class WaybarPage(Page):
         self.font_size = spin(current.font_size, 9, 20)
         self.radius = spin(current.radius, 0, 24)
         self.padding = spin(current.padding, 2, 24)
-        self.opacity = slider(current.opacity, 0.15, 1.0, 0.01)
         self.outline = Gtk.Switch(active=current.outline)
         self.outline.set_halign(Gtk.Align.END)
         self.shadow = Gtk.Switch(active=current.shadow)
@@ -3500,7 +3511,6 @@ class WaybarPage(Page):
             ("Font size", self.font_size),
             ("Module roundness", self.radius),
             ("Module padding", self.padding),
-            ("Module opacity", self.opacity),
             ("Module outline", self.outline),
             ("Module shadow", self.shadow),
         ]

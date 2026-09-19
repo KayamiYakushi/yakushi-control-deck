@@ -20,7 +20,7 @@ A lightweight GTK4 control deck and matching Waybar/Rofi setup for **Arch Linux 
 - Balanced / Performance power management.
 - Tonal Theme Studio, **wallpaper-driven Auto Color (Dark/Light)**, desktop typography, wallpapers, reliable theme-aware Kitty colors, Fastfetch Studio (startup toggle, ASCII editor, module switches and logo positioning) and a coordinated **LIQUID GLASS** suite for the Raycast-inspired Rofi launcher, Waybar and Kitty.
 - Matching Hyprlock lock screen and Yakushi SDDM boot login theme.
-- Waybar drag-and-drop module ordering, enable/disable controls, independent module outline/shadow switches and a staged glass preset with validated Hyprland blur.
+- Waybar drag-and-drop module ordering, enable/disable controls, live surface opacity, independent module outline/shadow switches and a staged glass preset with validated Hyprland blur.
 - Live staged previews for Terminal, Rofi, Waybar, Lock Screen and Login Screen; their preset files are not changed until Apply.
 - **Nautilus Studio** with reversible Hyprland-level window opacity control.
 - `REVERT LAST` history and automatic install backups.
@@ -153,7 +153,7 @@ MIT
 
 Launcher opacity is stored in `~/.config/rofi/yakushi-launcher-opacity.rasi` and imported last, so earlier theme rules cannot shadow the slider. The power menu keeps its separate `yakushi-opacity.rasi` window rule, preventing launcher presets from changing its five-action layout.
 
-Raycast Glass uses FZF result scoring without launch-history bias, so contiguous application-name matches rank predictably. Its original compact single-panel surface, fine border and subtle highlight gradients leave compositor blur and native Rofi buttons intact without a second faux-shadow wrapper. Install/update and Raycast fine-tuning both ensure the managed Hyprland layer rule is present; a live reload is validated and rolled back if Hyprland reports a new error.
+Rofi Studio intentionally keeps only two distinct presets: **SIGNATURE** and **RAYCAST GLASS**. Raycast Glass uses FZF result scoring without launch-history bias, so contiguous application-name matches rank predictably. Its original compact single-panel surface, fine border and subtle highlight gradients leave compositor blur and native Rofi buttons intact without a second faux-shadow wrapper. Install/update and Raycast fine-tuning both ensure the managed Hyprland layer rule is present; a live reload is validated and rolled back if Hyprland reports a new error.
 
 ## Liquid Glass suite
 

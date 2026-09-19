@@ -614,78 +614,6 @@ ROFI_THEME_PRESETS = (
         },
     ),
     (
-        "compact",
-        "COMPACT",
-        "Tighter unified surface for fast keyboard-first launching.",
-        {
-            "width": 530,
-            "window_radius": 14,
-            "window_padding": 13,
-            "window_border": 1,
-            "main_spacing": 8,
-            "input_bg": "@yak-surface-alt",
-            "input_border": 1,
-            "input_radius": 9,
-            "input_padding": "8px 11px",
-            "list_bg": "@yak-surface",
-            "list_radius": 10,
-            "list_padding": "3px",
-            "lines": 6,
-            "row_padding": "8px 9px",
-            "row_radius": 7,
-            "selected_bg": "@yak-hover",
-            "icon_size": 18,
-        },
-    ),
-    (
-        "borderless",
-        "BORDERLESS",
-        "Minimal chrome with one continuous tonal application surface.",
-        {
-            "width": 580,
-            "window_radius": 16,
-            "window_padding": 15,
-            "window_border": 0,
-            "main_spacing": 9,
-            "input_bg": "@yak-surface-alt",
-            "input_border": 0,
-            "input_radius": 10,
-            "input_padding": "9px 12px",
-            "list_bg": "@yak-surface",
-            "list_radius": 11,
-            "list_padding": "3px",
-            "lines": 7,
-            "row_padding": "9px 10px",
-            "row_radius": 7,
-            "selected_bg": "@yak-hover",
-            "icon_size": 20,
-        },
-    ),
-    (
-        "lounge",
-        "LOUNGE",
-        "More breathing room while keeping the list visually continuous.",
-        {
-            "width": 660,
-            "window_radius": 22,
-            "window_padding": 20,
-            "window_border": 1,
-            "main_spacing": 12,
-            "input_bg": "@yak-surface-alt",
-            "input_border": 1,
-            "input_radius": 13,
-            "input_padding": "11px 15px",
-            "list_bg": "@yak-surface",
-            "list_radius": 14,
-            "list_padding": "5px",
-            "lines": 8,
-            "row_padding": "11px 13px",
-            "row_radius": 9,
-            "selected_bg": "@yak-hover",
-            "icon_size": 21,
-        },
-    ),
-    (
         "raycast_glass",
         "RAYCAST GLASS",
         "A layered premium-glass launcher with refined typography and actions.",
@@ -750,7 +678,9 @@ def rofi_theme_preview(name: str) -> dict:
 def rofi_current_theme() -> str:
     text = ROFI_CONFIG.read_text() if ROFI_CONFIG.exists() else ""
     match = re.search(r"YAKUSHI ROFI THEME:\s*([a-z0-9_-]+)", text, flags=re.I)
-    return match.group(1).lower() if match else "signature"
+    current = match.group(1).lower() if match else "signature"
+    available = {key for key, _title, _description, _spec in ROFI_THEME_PRESETS}
+    return current if current in available else "signature"
 
 
 def _rofi_theme_text(name: str, font: str) -> str:
