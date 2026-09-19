@@ -20,9 +20,11 @@ A lightweight GTK4 control deck and matching Waybar/Rofi setup for **Arch Linux 
 - Balanced / Performance power management.
 - Tonal Theme Studio, **wallpaper-driven Auto Color (Dark/Light)**, desktop typography, wallpapers, reliable theme-aware Kitty colors, Fastfetch Studio (startup toggle, ASCII editor, module switches and logo positioning) and a coordinated **LIQUID GLASS** suite for the Raycast-inspired Rofi launcher, Waybar and Kitty.
 - Matching Hyprlock lock screen and Yakushi SDDM boot login theme.
-- Waybar drag-and-drop module ordering, enable/disable controls and a one-click glass preset with validated Hyprland blur.
+- Waybar drag-and-drop module ordering, enable/disable controls, independent module outline/shadow switches and a staged glass preset with validated Hyprland blur.
+- Live staged previews for Terminal, Rofi, Waybar, Lock Screen and Login Screen; their preset files are not changed until Apply.
 - **Nautilus Studio** with reversible Hyprland-level window opacity control.
 - `REVERT LAST` history and automatic install backups.
+- A guarded **Self Destruction** page that shows the exact plan before restoring original desktop files and removing only dependencies attributed to Yakushi.
 
 ## Bundled Waybar + Rofi
 
@@ -97,6 +99,12 @@ The installed copy also keeps the maintenance helpers under `~/.local/share/yaku
 This restores the Waybar/Rofi/shared-color/Kitty/Fastfetch files backed up immediately before the most recent install.
 
 ## Uninstall
+
+For complete removal, open the final **05 // DANGER → Self Destruction** page. Read the generated plan, acknowledge it, type `DESTROY YAKUSHI`, then use the enabled button. Yakushi opens a visible Kitty terminal for any required `sudo` password.
+
+The installer records only packages that were absent immediately before Yakushi installed them. Complete removal passes that exact set to `pacman -Rns`, allowing pacman to remove dependencies no longer needed elsewhere. A legacy install with no reliable package provenance keeps those packages instead of guessing.
+
+The lightweight command below remains available when you only want to remove the application launcher and keep the active desktop configuration:
 
 ```bash
 ./uninstall.sh

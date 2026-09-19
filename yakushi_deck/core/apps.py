@@ -374,6 +374,7 @@ def _kitty_set_style_marker(text: str, name: str) -> str:
 def kitty_apply_preset(
     name: str,
     colors: KittyColorState | None = None,
+    value: KittyState | None = None,
 ) -> tuple[bool, str]:
     key = str(name).strip().lower()
     if key != "liquid_glass":
@@ -410,11 +411,11 @@ def kitty_apply_preset(
         text = config.read_text() if config.exists() else ""
         text = _kitty_set_style_marker(text, key)
         settings = {
-            "background_opacity": "0.78",
+            "background_opacity": f"{value.opacity:.2f}" if value is not None else "0.78",
             "background_blur": "32",
             "dynamic_background_opacity": "yes",
-            "window_padding_width": "12",
-            "single_window_padding_width": "12",
+            "window_padding_width": str(value.padding) if value is not None else "12",
+            "single_window_padding_width": str(value.padding) if value is not None else "12",
             "window_margin_width": "0",
             "placement_strategy": "center",
             "window_border_width": "1pt",
@@ -430,6 +431,8 @@ def kitty_apply_preset(
             "active_tab_font_style": "bold",
             "inactive_tab_font_style": "normal",
         }
+        if value is not None:
+            settings["font_size"] = f"{value.font_size:.1f}"
         for option, setting in settings.items():
             text = _kitty_set(text, option, setting)
         _write_preserving_symlink(config, text)
@@ -448,7 +451,13 @@ def kitty_apply_preset(
         return False, f"Kitty Liquid Glass could not be applied: {exc}"
 
     _reload_kitty_config()
-    return True, "Kitty LIQUID GLASS applied with 78% transparency, Wayland blur, spacious padding and a soft fade tab bar. Reopen Kitty if the current window cannot reload opacity."
+    opacity = value.opacity if value is not None else 0.78
+    padding = value.padding if value is not None else 12
+    return True, (
+        f"Kitty LIQUID GLASS applied with {round(opacity * 100)}% opacity, "
+        f"Wayland blur, {padding}px padding and a soft fade tab bar. "
+        "Reopen Kitty if the current window cannot reload opacity."
+    )
 
 
 # ---------- Rofi ----------
@@ -663,6 +672,30 @@ def _rofi_theme_spec(name: str):
         if key == name:
             return key, title, description, spec
     return ROFI_THEME_PRESETS[0]
+
+
+def rofi_theme_preview(name: str) -> dict:
+    """Return UI-safe staged values without touching the user's Rofi files."""
+    key, title, description, spec = _rofi_theme_spec(name)
+    return {
+        "key": key,
+        "title": title,
+        "description": description,
+        "font": str(spec.get("font", "JetBrainsMono Nerd Font 12")),
+        "width": int(spec["width"]),
+        "radius": int(spec["window_radius"]),
+        "padding": int(spec["window_padding"]),
+        "lines": int(spec["lines"]),
+        "opacity": float(spec.get("opacity", 0.92)),
+        "borderless": int(spec["window_border"]) == 0,
+        "premium": spec.get("layout") == "raycast",
+    }
+
+
+def rofi_current_theme() -> str:
+    text = ROFI_CONFIG.read_text() if ROFI_CONFIG.exists() else ""
+    match = re.search(r"YAKUSHI ROFI THEME:\s*([a-z0-9_-]+)", text, flags=re.I)
+    return match.group(1).lower() if match else "signature"
 
 
 def _rofi_theme_text(name: str, font: str) -> str:
@@ -965,13 +998,42 @@ textbox {{
 """
 
 
-def rofi_apply_theme(name: str) -> tuple[bool, str]:
+def _rofi_apply_staged_geometry(text: str, value: RofiState) -> tuple[str, str | None]:
+    premium = "/* YAKUSHI ROFI THEME: raycast_glass */" in text
+    inset_shadow = premium and "/* YAKUSHI ROFI SHADOW: inset */" in text
+    panel_block = "mainbox" if inset_shadow else "window"
+    operations = [
+        lambda value_text: _set_rasi_configuration(value_text, "font", f'"{value.font}"'),
+        lambda value_text: _set_rasi_block(value_text, "window", "width", f"{value.width}px"),
+        lambda value_text: _set_rasi_block(value_text, panel_block, "border-radius", f"{value.radius}px"),
+        lambda value_text: _set_rasi_block(value_text, panel_block, "padding", f"{value.padding}px"),
+        lambda value_text: _set_rasi_block(value_text, "listview", "lines", str(value.lines)),
+    ]
+    if inset_shadow:
+        operations.insert(
+            -1,
+            lambda value_text: _set_rasi_block(
+                value_text,
+                "window",
+                "border-radius",
+                f"{value.radius + 6}px",
+            ),
+        )
+    for operation in operations:
+        text, ok = operation(text)
+        if not ok:
+            return text, "A staged Rofi preview property could not be located."
+    return text, None
+
+
+def rofi_apply_theme(name: str, value: RofiState | None = None) -> tuple[bool, str]:
     if not ROFI_CONFIG.exists():
         return False, "Rofi config.rasi was not found."
 
     key, title, _description, spec = _rofi_theme_spec(name)
     current = rofi_load()
-    theme_opacity = float(spec.get("opacity", current.opacity))
+    staged = value or current
+    theme_opacity = float(staged.opacity if value is not None else spec.get("opacity", current.opacity))
     original = ROFI_CONFIG.read_text()
     override_original = (
         ROFI_LAUNCHER_OPACITY_OVERRIDE.read_text()
@@ -998,7 +1060,12 @@ def rofi_apply_theme(name: str) -> tuple[bool, str]:
         files.append(hypr_config)
     record(f"Rofi theme: {title}", files=files)
 
-    atomic_write(ROFI_CONFIG, _rofi_theme_text(key, current.font))
+    theme_text = _rofi_theme_text(key, staged.font)
+    if value is not None:
+        theme_text, staged_error = _rofi_apply_staged_geometry(theme_text, staged)
+        if staged_error:
+            return False, staged_error
+    atomic_write(ROFI_CONFIG, theme_text)
     colors = HYPR_COLORS_RASI.read_text() if HYPR_COLORS_RASI.exists() else ""
     base = _named_rasi_color(colors, "yak-bg") or _named_rasi_color(colors, "bg") or "#1a1414"
     base_match = re.search(r'#[0-9a-fA-F]{6}', base)
@@ -1520,7 +1587,7 @@ def _waybar_liquid_style(text: str) -> str:
         ("background-color", "alpha(@surface, 0.58)"),
         ("background-image", "linear-gradient(to bottom, alpha(@fg, 0.07), alpha(@bg, 0.03))"),
         ("color", "@fg"),
-        ("border", "1px solid alpha(@fg, 0.14)"),
+        ("border", "none"),
         ("border-radius", "12px"),
         ("padding", "2px 9px"),
         ("margin", "4px 2px"),
@@ -1608,6 +1675,8 @@ class WaybarState:
     radius: int
     padding: int
     opacity: float
+    outline: bool
+    shadow: bool
     left: list[str]
     center: list[str]
     right: list[str]
@@ -1648,6 +1717,41 @@ def _set_json_number(text: str, key: str, value: int) -> tuple[str, bool]:
     return updated, count == 1
 
 
+def _waybar_surface_prop(text: str, prop: str, default: str = "") -> str:
+    start = text.find("#custom-launcher,")
+    if start < 0:
+        return default
+    opening = text.find("{", start)
+    closing = text.find("}", opening + 1)
+    if opening < 0 or closing < 0:
+        return default
+    body = text[opening + 1:closing]
+    matches = list(re.finditer(rf'(?<![\w-]){re.escape(prop)}\s*:\s*([^;]+);', body))
+    return matches[-1].group(1).strip() if matches else default
+
+
+def _waybar_style_with_state(style: str, value: WaybarState) -> tuple[str, str | None]:
+    liquid = WAYBAR_STYLE_MARKER in style
+    outline = "1px solid alpha(@fg, 0.14)" if liquid else "1px solid @border"
+    properties = (
+        ("font-size", f"{value.font_size}px", "* {"),
+        ("border-radius", f"{value.radius}px", "#custom-launcher,"),
+        ("padding", f"2px {value.padding}px", "#custom-launcher,"),
+        ("background-color", f"alpha(@surface, {value.opacity:.2f})", "#custom-launcher,"),
+        ("border", outline if value.outline else "none", "#custom-launcher,"),
+        (
+            "box-shadow",
+            "0 3px 10px alpha(@bg, 0.42), inset 0 1px alpha(@fg, 0.06)" if value.shadow else "none",
+            "#custom-launcher,",
+        ),
+    )
+    for prop, prop_value, selector in properties:
+        style, ok = _set_css_rule_prop(style, selector, prop, prop_value)
+        if not ok:
+            return style, f'Waybar property "{prop}" was not found.'
+    return style, None
+
+
 def waybar_load() -> WaybarState:
     config = WAYBAR_CONFIG.read_text() if WAYBAR_CONFIG.exists() else ""
     style = WAYBAR_STYLE.read_text() if WAYBAR_STYLE.exists() else ""
@@ -1668,6 +1772,8 @@ def waybar_load() -> WaybarState:
         style,
         flags=re.S,
     )
+    border = _waybar_surface_prop(style, "border", "none").lower()
+    shadow = _waybar_surface_prop(style, "box-shadow", "none").lower()
 
     return WaybarState(
         height=_json_number(config, "height", 34),
@@ -1679,6 +1785,8 @@ def waybar_load() -> WaybarState:
         radius=int(radius.group(1)) if radius else 10,
         padding=int(padding.group(2)) if padding else 10,
         opacity=float(opacity.group(1)) if opacity else 1.0,
+        outline=border not in {"none", "0", "0px"} and "transparent" not in border,
+        shadow=shadow not in {"", "none", "0"},
         left=_module_array(config, "modules-left"),
         center=_module_array(config, "modules-center"),
         right=_module_array(config, "modules-right"),
@@ -1713,44 +1821,9 @@ def waybar_save(value: WaybarState) -> tuple[bool, str]:
         if not ok:
             return False, f'Waybar module group "{key}" was not found.'
 
-    style, count = re.subn(
-        r'(\bfont-size\s*:\s*)\d+px\s*;',
-        rf'\g<1>{value.font_size}px;',
-        style_original,
-        count=1,
-    )
-    if count != 1:
-        return False, "Waybar font-size rule was not found."
-
-    style, count = re.subn(
-        r'(#custom-launcher,.*?\{.*?\bborder-radius\s*:\s*)\d+px\s*;',
-        rf'\g<1>{value.radius}px;',
-        style,
-        count=1,
-        flags=re.S,
-    )
-    if count != 1:
-        return False, "Waybar module radius rule was not found."
-
-    style, count = re.subn(
-        r'(#custom-launcher,.*?\{.*?\bpadding\s*:\s*)\d+px\s+\d+px\s*;',
-        rf'\g<1>2px {value.padding}px;',
-        style,
-        count=1,
-        flags=re.S,
-    )
-    if count != 1:
-        return False, "Waybar module padding rule was not found."
-
-    style, count = re.subn(
-        r'(#custom-launcher,.*?\{.*?\bbackground-color\s*:\s*)(?:@(?:bg|surface)|alpha\(\s*@(?:bg|surface)\s*,\s*[0-9.]+\s*\))\s*;',
-        rf'\g<1>alpha(@surface, {value.opacity:.2f});',
-        style,
-        count=1,
-        flags=re.S,
-    )
-    if count != 1:
-        return False, "Waybar module background rule was not found."
+    style, style_error = _waybar_style_with_state(style_original, value)
+    if style_error:
+        return False, style_error
 
     record(
         "Waybar settings",
@@ -1764,7 +1837,7 @@ def waybar_save(value: WaybarState) -> tuple[bool, str]:
     return True, "Waybar configuration updated."
 
 
-def waybar_apply_preset(name: str) -> tuple[bool, str]:
+def waybar_apply_preset(name: str, value: WaybarState | None = None) -> tuple[bool, str]:
     key = str(name).strip().lower()
     if key != "liquid_glass":
         return False, "Unknown Waybar preset."
@@ -1774,22 +1847,36 @@ def waybar_apply_preset(name: str) -> tuple[bool, str]:
     config_original = WAYBAR_CONFIG.read_text()
     style_original = WAYBAR_STYLE.read_text()
     config = config_original
-    for prop, value in (
-        ("height", 34),
-        ("margin-top", 6),
-        ("margin-left", 10),
-        ("margin-right", 10),
-        ("spacing", 3),
-    ):
-        config, ok = _set_json_number(config, prop, value)
+    numbers = (
+        ("height", value.height if value is not None else 34),
+        ("margin-top", value.margin_top if value is not None else 6),
+        ("margin-left", value.margin_left if value is not None else 10),
+        ("margin-right", value.margin_right if value is not None else 10),
+        ("spacing", value.spacing if value is not None else 3),
+    )
+    for prop, number in numbers:
+        config, ok = _set_json_number(config, prop, number)
         if not ok:
             return False, f'Waybar property "{prop}" was not found.'
+    if value is not None:
+        for key, modules in (
+            ("modules-left", value.left),
+            ("modules-center", value.center),
+            ("modules-right", value.right),
+        ):
+            config, ok = _set_module_array(config, key, modules)
+            if not ok:
+                return False, f'Waybar module group "{key}" was not found.'
 
     try:
         style = _waybar_liquid_style(style_original)
         style, ok = _set_css_rule_prop(style, "* {", "font-size", "12px")
         if not ok:
             raise ValueError("Waybar global font rule was not found")
+        if value is not None:
+            style, style_error = _waybar_style_with_state(style, value)
+            if style_error:
+                raise ValueError(style_error)
     except Exception as exc:
         return False, f"Waybar LIQUID GLASS could not be generated: {exc}"
 
@@ -1826,13 +1913,7 @@ def waybar_apply_preset(name: str) -> tuple[bool, str]:
         atomic_write(WAYBAR_STYLE, style)
         written_config = WAYBAR_CONFIG.read_text()
         written_style = WAYBAR_STYLE.read_text()
-        expected_numbers = {
-            "height": 34,
-            "margin-top": 6,
-            "margin-left": 10,
-            "margin-right": 10,
-            "spacing": 3,
-        }
+        expected_numbers = dict(numbers)
         bad_numbers = [
             prop
             for prop, expected in expected_numbers.items()

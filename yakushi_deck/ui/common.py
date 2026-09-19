@@ -30,8 +30,10 @@ def spin(value, lower, upper, step=1, digits=0):
 
 def slider(value, lower, upper, step=0.01, digits=2):
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+    box.add_css_class("deck-slider-row")
 
     scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, lower, upper, step)
+    scale.add_css_class("deck-slider")
     scale.set_value(value)
     scale.set_draw_value(False)
     scale.set_hexpand(True)

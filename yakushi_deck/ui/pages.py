@@ -37,6 +37,11 @@ from ..core.frame import (
     status as window_frame_status,
 )
 from ..core.power import apply_mode as apply_power_mode, status as power_status
+from ..core.self_destruct import (
+    launch_self_destruct,
+    load_plan as load_self_destruct_plan,
+    plan_lines as self_destruct_plan_lines,
+)
 from ..core.lockscreen import (
     LockSettings,
     SddmSettings,
@@ -62,6 +67,8 @@ from ..core.apps import (
     rofi_load,
     rofi_save,
     rofi_apply_theme,
+    rofi_current_theme,
+    rofi_theme_preview,
     rofi_theme_presets,
     waybar_load,
     waybar_save,
@@ -468,6 +475,10 @@ class WaybarMiniPreview(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         self.owner = owner
         self.add_css_class("waybar-preview")
+        self.preview_name = f"yakushi-waybar-live-{id(self)}"
+        self.set_name(self.preview_name)
+        self._provider = Gtk.CssProvider()
+        self._attach_provider(self)
 
         self.left = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.left.add_css_class("waybar-preview-lane")
@@ -487,6 +498,12 @@ class WaybarMiniPreview(Gtk.Box):
         self.append(self.center)
         self.append(self.right)
 
+    def _attach_provider(self, widget):
+        widget.get_style_context().add_provider(
+            self._provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
+        )
+
     def _fill(self, box, items):
         child = box.get_first_child()
         while child:
@@ -497,6 +514,7 @@ class WaybarMiniPreview(Gtk.Box):
         if not items:
             empty = Gtk.Label(label="—")
             empty.add_css_class("waybar-preview-empty")
+            self._attach_provider(empty)
             box.append(empty)
             return
 
@@ -504,13 +522,40 @@ class WaybarMiniPreview(Gtk.Box):
             chip = Gtk.Box()
             chip.add_css_class("waybar-preview-chip")
             label = Gtk.Label(label=self.SAMPLE.get(module, self.owner.short_label(module)))
+            self._attach_provider(chip)
+            self._attach_provider(label)
             chip.append(label)
             box.append(chip)
+
+    def refresh(self, value: WaybarState):
+        spacing = max(0, int(value.spacing))
+        for lane in (self.left, self.center, self.right):
+            lane.set_spacing(spacing)
+        self.set_margin_top(min(12, int(value.margin_top)))
+        self.set_margin_start(min(24, int(value.margin_left)))
+        self.set_margin_end(min(24, int(value.margin_right)))
+        self.set_size_request(-1, max(28, min(60, int(value.height))))
+
+        palette = load_palette()
+        bg_rgb = tuple(int(palette.surface[index:index + 2], 16) for index in (1, 3, 5))
+        alpha = max(0.15, min(1.0, float(value.opacity)))
+        border = "1px solid rgba(232, 162, 154, 0.34)" if value.outline else "none"
+        shadow = "0 4px 12px rgba(0, 0, 0, 0.48)" if value.shadow else "none"
+        self._provider.load_from_data((
+            f"#{self.preview_name} {{ min-height: {max(28, min(60, int(value.height)))}px; }}\n"
+            ".waybar-preview-chip { "
+            f"background-color: rgba({bg_rgb[0]}, {bg_rgb[1]}, {bg_rgb[2]}, {alpha:.2f}); "
+            f"border: {border}; border-radius: {int(value.radius)}px; "
+            f"box-shadow: {shadow}; padding: 2px {int(value.padding)}px; }}\n"
+            f".waybar-preview-chip label {{ font-size: {int(value.font_size)}px; }}"
+        ).encode())
 
     def rebuild(self):
         self._fill(self.left, self.owner.module_state["Left"])
         self._fill(self.center, self.owner.module_state["Center"])
         self._fill(self.right, self.owner.module_state["Right"])
+        if hasattr(self.owner, "staged_state"):
+            self.refresh(self.owner.staged_state())
 
 
 class AppearancePage(Page):
@@ -2105,6 +2150,117 @@ class WallpaperSelector(Gtk.Box):
         chooser.show()
 
 
+class SessionLivePreview(Gtk.Overlay):
+    """Small staged Hyprlock/SDDM surface that never writes configuration."""
+
+    def __init__(self, *, login: bool = False):
+        super().__init__()
+        self.login = login
+        self.set_size_request(-1, 260)
+        self.add_css_class("session-live-preview")
+
+        self.picture = Gtk.Picture()
+        self.picture.set_content_fit(Gtk.ContentFit.COVER)
+        self.picture.set_can_shrink(True)
+        self.set_child(self.picture)
+
+        self.shade = Gtk.Box()
+        self.shade_name = f"yakushi-session-shade-{id(self)}"
+        self.shade.set_name(self.shade_name)
+        self.shade.set_hexpand(True)
+        self.shade.set_vexpand(True)
+        self.add_overlay(self.shade)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        content.set_halign(Gtk.Align.CENTER)
+        content.set_valign(Gtk.Align.CENTER)
+        content.add_css_class("session-live-content")
+        self.add_overlay(content)
+
+        self.mark = Gtk.Label(label="薬")
+        self.mark.add_css_class("sddm-preview-symbol")
+        content.append(self.mark)
+
+        title = Gtk.Label(label="YAKUSHI // LOGIN" if login else "YAKUSHI // LOCK")
+        title.add_css_class("meta")
+        content.append(title)
+
+        self.clock = Gtk.Label(label="21:45")
+        self.clock.add_css_class("sddm-preview-time")
+        content.append(self.clock)
+
+        self.date = Gtk.Label(label="SATURDAY, 19 SEPTEMBER")
+        self.date.add_css_class("session-live-date")
+        content.append(self.date)
+
+        self.field = Gtk.Label(label="••••••••" if login else "PASSWORD")
+        self.field.add_css_class("sddm-preview-field")
+        content.append(self.field)
+
+        self.detail = Gtk.Label(xalign=0.5)
+        self.detail.add_css_class("session-live-detail")
+        content.append(self.detail)
+
+        self._provider = Gtk.CssProvider()
+        for widget in (self.shade, self.mark, self.clock, self.date, self.field, self.detail):
+            widget.get_style_context().add_provider(
+                self._provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
+            )
+        self._texture = None
+
+    def _set_picture(self, path: str, blur_passes: int, blur_size: int):
+        source = Path(path).expanduser() if path else None
+        if not source or not source.is_file():
+            self._texture = None
+            self.picture.set_paintable(None)
+            return
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(source), 960, 360, True)
+            if blur_passes > 0:
+                strength = max(2, min(18, blur_size + blur_passes * 2))
+                small_width = max(48, pixbuf.get_width() // strength)
+                small_height = max(28, pixbuf.get_height() // strength)
+                small = pixbuf.scale_simple(small_width, small_height, GdkPixbuf.InterpType.BILINEAR)
+                if small is not None:
+                    blurred = small.scale_simple(
+                        pixbuf.get_width(),
+                        pixbuf.get_height(),
+                        GdkPixbuf.InterpType.BILINEAR,
+                    )
+                    if blurred is not None:
+                        pixbuf = blurred
+            self._texture = Gdk.Texture.new_for_pixbuf(pixbuf)
+            self.picture.set_paintable(self._texture)
+        except Exception:
+            self._texture = None
+            self.picture.set_paintable(None)
+
+    def update(
+        self,
+        *,
+        wallpaper: str,
+        blur_passes: int,
+        blur_size: int,
+        brightness: float,
+        clock_24h: bool,
+        show_date: bool,
+    ):
+        self._set_picture(wallpaper, blur_passes, blur_size)
+        palette = load_palette()
+        darkness = max(0.0, min(0.75, 1.0 - float(brightness)))
+        self.clock.set_text("21:45" if clock_24h else "09:45 PM")
+        self.date.set_visible(bool(show_date))
+        self.detail.set_text(
+            f"BLUR {int(blur_passes)}×{int(blur_size)}  //  BRIGHTNESS {round(float(brightness) * 100)}%"
+        )
+        self._provider.load_from_data((
+            f"#{self.shade_name} {{ background-color: rgba(0, 0, 0, {darkness:.2f}); }}\n"
+            f".sddm-preview-symbol, .sddm-preview-time {{ color: {palette.accent}; }}\n"
+            f".sddm-preview-field {{ color: {palette.muted}; background: {palette.surface}; border-color: {palette.border}; }}"
+        ).encode())
+
+
 class LockPage(Page):
     def __init__(self):
         super().__init__()
@@ -2113,6 +2269,14 @@ class LockPage(Page):
             "04", "Session", "Lock Screen",
             "Build a Hyprlock screen that follows your Yakushi palette, wallpaper, and typography."
         ))
+
+        preview_card = card(
+            "// LIVE LOCK PREVIEW",
+            "Wallpaper, approximate blur, brightness, clock format and date visibility update before APPLY LOCK SCREEN."
+        )
+        self.live_preview = SessionLivePreview(login=False)
+        preview_card.append(self.live_preview)
+        self.append(preview_card)
 
         state_card = card("// HYPRLOCK", "Yakushi writes the standard ~/.config/hypr/hyprlock.conf file and keeps it in REVERT history.")
         availability = Gtk.Label(
@@ -2124,7 +2288,7 @@ class LockPage(Page):
         self.append(state_card)
 
         wall = card("// LOCK WALLPAPER", "Use the current desktop wallpaper or choose a separate image for the lock screen.")
-        self.wallpaper = WallpaperSelector(info.get("wallpaper", ""))
+        self.wallpaper = WallpaperSelector(info.get("wallpaper", ""), on_change=self._refresh_live_preview)
         wall.append(self.wallpaper)
         self.append(wall)
 
@@ -2153,6 +2317,23 @@ class LockPage(Page):
         actions.append(action_button("LOCK NOW", self.test))
         self.append(actions)
         self.append(self.status)
+
+        self.blur_passes.connect("value-changed", self._refresh_live_preview)
+        self.blur_size.connect("value-changed", self._refresh_live_preview)
+        self.brightness.scale.connect("value-changed", self._refresh_live_preview)
+        self.clock_24h.connect("toggled", self._refresh_live_preview)
+        self.show_date.connect("toggled", self._refresh_live_preview)
+        self._refresh_live_preview()
+
+    def _refresh_live_preview(self, *_):
+        self.live_preview.update(
+            wallpaper=self.wallpaper.value(),
+            blur_passes=int(self.blur_passes.get_value()),
+            blur_size=int(self.blur_size.get_value()),
+            brightness=round(self.brightness.scale.get_value(), 2),
+            clock_24h=self.clock_24h.get_active(),
+            show_date=self.show_date.get_active(),
+        )
 
     def settings(self):
         return LockSettings(
@@ -2195,28 +2376,20 @@ class LoginPage(Page):
         status_card.append(label)
         self.append(status_card)
 
-        preview_card = card("// YAKUSHI GREETER", "The login theme mirrors Lock Screen Studio: wallpaper, clock/date preference, darkness, blur intent, Theme Studio palette, and desktop serif typography.")
-        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        mock.add_css_class("sddm-preview-card")
-        mark = Gtk.Label(label="薬")
-        mark.add_css_class("sddm-preview-symbol")
-        mock.append(mark)
-        title = Gtk.Label(label="YAKUSHI // LOGIN")
-        title.add_css_class("meta")
-        mock.append(title)
-        time = Gtk.Label(label="21:45")
-        time.add_css_class("sddm-preview-time")
-        mock.append(time)
-        field = Gtk.Label(label="••••••••")
-        field.add_css_class("sddm-preview-field")
-        mock.append(field)
-        preview_card.append(mock)
+        preview_card = card(
+            "// LIVE YAKUSHI GREETER",
+            "The selected login wallpaper is rendered immediately with the current Lock Screen blur, brightness, clock/date and Yakushi palette."
+        )
+        self.live_preview = SessionLivePreview(login=True)
+        preview_card.append(self.live_preview)
         self.append(preview_card)
 
         wall = card("// LOGIN WALLPAPER", "Defaults to the Lock Screen wallpaper. Choose a different image only if you want boot login and Hyprlock to diverge. Yakushi copies it into the system theme so SDDM can always read it.")
-        self.wallpaper = WallpaperSelector(info.get("wallpaper", ""))
+        self.wallpaper = WallpaperSelector(info.get("wallpaper", ""), on_change=self._refresh_live_preview)
         wall.append(self.wallpaper)
         self.append(wall)
+        self._refresh_live_preview()
+        self.connect("map", self._refresh_live_preview)
 
         safety = card(
             "// SAFE APPLY",
@@ -2239,6 +2412,17 @@ class LoginPage(Page):
 
     def settings(self):
         return SddmSettings(wallpaper=self.wallpaper.value(), sync_palette=True)
+
+    def _refresh_live_preview(self, *_):
+        state = lock_status()
+        self.live_preview.update(
+            wallpaper=self.wallpaper.value(),
+            blur_passes=int(state.get("blur_passes", 3)),
+            blur_size=int(state.get("blur_size", 8)),
+            brightness=float(state.get("brightness", 0.72)),
+            clock_24h=bool(state.get("clock_24h", True)),
+            show_date=bool(state.get("show_date", True)),
+        )
 
     def preview(self, *_):
         _ok, message = preview_sddm(self.settings())
@@ -2309,6 +2493,7 @@ class TerminalPage(Page):
 
         current = kitty_load()
         colors = kitty_colors_load()
+        self.pending_preset = None
 
         preview = card("// LIVE PREVIEW")
         self.preview_mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
@@ -2330,18 +2515,18 @@ class TerminalPage(Page):
         liquid_button = Gtk.Button()
         liquid_button.add_css_class("preset-card")
         liquid_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
-        liquid_title = Gtk.Label(label="01  LIQUID GLASS", xalign=0)
+        liquid_title = Gtk.Label(label="01  LIQUID GLASS // PREVIEW", xalign=0)
         liquid_title.add_css_class("preset-title")
         liquid_content.append(liquid_title)
         liquid_description = Gtk.Label(
-            label="78% tonal glass, native Kitty blur, balanced padding and a soft fade tab bar.",
+            label="Stage 78% tonal glass, balanced padding and a soft fade tab bar. Nothing is written until APPLY KITTY SETTINGS.",
             xalign=0,
         )
         liquid_description.set_wrap(True)
         liquid_description.add_css_class("muted")
         liquid_content.append(liquid_description)
         liquid_button.set_child(liquid_content)
-        liquid_button.connect("clicked", self.apply_liquid_glass)
+        liquid_button.connect("clicked", self.preview_liquid_glass)
         presets.append(liquid_button)
         self.append(presets)
 
@@ -2412,6 +2597,9 @@ class TerminalPage(Page):
             self._preview_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
         )
+        self.font_size.connect("value-changed", self._refresh_preview)
+        self.padding.connect("value-changed", self._refresh_preview)
+        self.opacity.scale.connect("value-changed", self._refresh_preview)
         self._color_mode_changed()
         self._refresh_preview()
 
@@ -2446,7 +2634,7 @@ class TerminalPage(Page):
     def _color_changed(self, *_):
         self._refresh_preview()
 
-    def _refresh_preview(self):
+    def _refresh_preview(self, *_):
         if not hasattr(self, "_preview_provider"):
             return
         background = self._button_hex(self.color_buttons["background"])
@@ -2454,10 +2642,13 @@ class TerminalPage(Page):
         accent = self._button_hex(self.color_buttons["accent"])
         bg_rgb = tuple(int(background[index:index + 2], 16) for index in (1, 3, 5))
         fg_rgb = tuple(int(foreground[index:index + 2], 16) for index in (1, 3, 5))
+        opacity = max(0.25, min(1.0, self.opacity.scale.get_value()))
+        font_size = max(7.0, min(28.0, self.font_size.get_value()))
+        padding = max(0, min(32, int(self.padding.get_value())))
         self._preview_provider.load_from_data((
-            f"#{self.preview_name} {{ background-color: rgba({bg_rgb[0]}, {bg_rgb[1]}, {bg_rgb[2]}, 0.78); "
-            f"border-color: rgba({fg_rgb[0]}, {fg_rgb[1]}, {fg_rgb[2]}, 0.14); }}\n"
-            f"#{self.preview_name} label {{ color: {foreground}; }}\n"
+            f"#{self.preview_name} {{ background-color: rgba({bg_rgb[0]}, {bg_rgb[1]}, {bg_rgb[2]}, {opacity:.2f}); "
+            f"border-color: rgba({fg_rgb[0]}, {fg_rgb[1]}, {fg_rgb[2]}, 0.14); padding: {padding}px; }}\n"
+            f"#{self.preview_name} label {{ color: {foreground}; font-size: {font_size:.1f}px; }}\n"
             f"#{self.preview_name} .terminal-preview-accent {{ color: {accent}; font-weight: 800; }}"
         ).encode())
 
@@ -2495,7 +2686,7 @@ class TerminalPage(Page):
         else:
             self.status.set_text("ERROR: " + message)
 
-    def apply_liquid_glass(self, *_):
+    def preview_liquid_glass(self, *_):
         palette = load_palette()
         colors = KittyColorState(
             mode="follow",
@@ -2503,11 +2694,7 @@ class TerminalPage(Page):
             foreground=palette.fg,
             accent=palette.accent,
         )
-        ok, message = kitty_apply_preset("liquid_glass", colors)
-        if not ok:
-            self.status.set_text("ERROR: " + message)
-            return
-
+        self.pending_preset = "liquid_glass"
         self.opacity.scale.set_value(0.78)
         self.padding.set_value(12)
         self.color_mode.set_selected(0)
@@ -2515,7 +2702,7 @@ class TerminalPage(Page):
         for button in self.color_buttons.values():
             button.set_sensitive(False)
         self._refresh_preview()
-        self.status.set_text(message)
+        self.status.set_text("LIQUID GLASS is staged in the live preview. Press APPLY KITTY SETTINGS to write it.")
 
     def apply(self, *_):
         value = KittyState(
@@ -2523,7 +2710,22 @@ class TerminalPage(Page):
             opacity=round(self.opacity.scale.get_value(), 2),
             padding=int(self.padding.get_value()),
         )
-        _, message = kitty_save(value)
+        if self.pending_preset == "liquid_glass":
+            palette = load_palette()
+            colors = KittyColorState(
+                mode="follow",
+                background=palette.bg,
+                foreground=palette.fg,
+                accent=palette.accent,
+            )
+            ok, message = kitty_apply_preset("liquid_glass", colors, value)
+            if not ok:
+                self.status.set_text("ERROR: " + message)
+                return
+        else:
+            ok, message = kitty_save(value)
+        if ok:
+            self.pending_preset = None
         self.status.set_text(message)
 
 
@@ -2838,6 +3040,9 @@ class RofiPage(Page):
         ))
 
         current = rofi_load()
+        self.pending_theme = None
+        self.preview_theme_key = rofi_current_theme()
+        self.theme_buttons = {}
 
         themes = card(
             "// ROFI THEMES",
@@ -2857,47 +3062,54 @@ class RofiPage(Page):
             note.add_css_class("muted")
             content.append(note)
             button.set_child(content)
-            button.connect("clicked", self.apply_theme, key)
+            button.connect("clicked", self.preview_theme, key)
+            self.theme_buttons[key] = button
+            if key == self.preview_theme_key:
+                button.add_css_class("selected")
             theme_grid.attach(button, index % 2, index // 2, 1, 1)
         themes.append(theme_grid)
         self.append(themes)
 
         preview = card(
-            "// RAYCAST GLASS PREVIEW",
-            "Layered glass, neutral typography, an accent selection rail and quiet clickable actions."
+            "// LIVE PREVIEW",
+            "Theme cards and every fine-tuning control update this launcher immediately. Disk files change only when you press APPLY ROFI SETTINGS."
         )
-        mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        mock.add_css_class("rofi-preview")
+        self.preview_mock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.preview_mock.add_css_class("rofi-preview")
+        self.preview_name = f"yakushi-rofi-live-{id(self)}"
+        self.preview_mock.set_name(self.preview_name)
         search = Gtk.Label(label="   Search applications...", xalign=0)
         search.add_css_class("rofi-preview-search")
-        mock.append(search)
+        self.preview_mock.append(search)
 
-        section = Gtk.Label(label="APPLICATIONS", xalign=0)
-        section.add_css_class("rofi-preview-section")
-        mock.append(section)
+        self.preview_section = Gtk.Label(label="APPLICATIONS", xalign=0)
+        self.preview_section.add_css_class("rofi-preview-section")
+        self.preview_mock.append(self.preview_section)
 
-        for index, text in enumerate(["󰈹   Firefox", "   Kitty", "󰉋   Files"]):
+        self.preview_items = []
+        for index, text in enumerate(["󰈹   Firefox", "   Kitty", "󰉋   Files", "󰊤   GitHub", "󰈙   Documents", "󰍹   Settings"]):
             item = Gtk.Label(label=text, xalign=0)
             item.add_css_class("rofi-preview-item")
             if index == 0:
                 item.add_css_class("rofi-preview-selected")
-            mock.append(item)
+            self.preview_mock.append(item)
+            self.preview_items.append(item)
 
-        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        footer.add_css_class("rofi-preview-footer")
+        self.preview_footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.preview_footer.add_css_class("rofi-preview-footer")
         brand = Gtk.Label(label="薬  YAKUSHI", xalign=0)
         brand.set_hexpand(True)
         brand.add_css_class("rofi-preview-brand")
-        footer.append(brand)
+        self.preview_footer.append(brand)
         close_key = Gtk.Label(label="Esc", xalign=1)
         close_key.add_css_class("rofi-preview-close")
-        footer.append(close_key)
+        self.preview_footer.append(close_key)
         open_key = Gtk.Label(label="↵  Open", xalign=1)
         open_key.add_css_class("rofi-preview-open")
-        footer.append(open_key)
-        mock.append(footer)
+        self.preview_footer.append(open_key)
+        self.preview_mock.append(self.preview_footer)
 
-        preview.append(mock)
+        preview.append(self.preview_mock)
         self.append(preview)
 
         settings = card("// FINE TUNING")
@@ -2919,10 +3131,72 @@ class RofiPage(Page):
         self.status.add_css_class("status")
 
         actions = Gtk.Box(spacing=8)
-        actions.append(action_button("APPLY FINE TUNING", self.apply, primary=True))
+        actions.append(action_button("APPLY ROFI SETTINGS", self.apply, primary=True))
         actions.append(action_button("OPEN ROFI", self.open_rofi))
         self.append(actions)
         self.append(self.status)
+
+        self._preview_provider = Gtk.CssProvider()
+        for widget in (
+            self.preview_mock,
+            search,
+            self.preview_section,
+            self.preview_footer,
+            *self.preview_items,
+        ):
+            widget.get_style_context().add_provider(
+                self._preview_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
+            )
+        self.font.connect("changed", self._refresh_preview)
+        for control in (self.width, self.radius, self.padding, self.lines):
+            control.connect("value-changed", self._refresh_preview)
+        self.opacity.scale.connect("value-changed", self._refresh_preview)
+        self._refresh_preview()
+
+    def _staged_value(self) -> RofiState:
+        return RofiState(
+            font=self.font.get_text().strip() or "JetBrainsMono Nerd Font 12",
+            width=int(self.width.get_value()),
+            radius=int(self.radius.get_value()),
+            padding=int(self.padding.get_value()),
+            lines=int(self.lines.get_value()),
+            opacity=round(self.opacity.scale.get_value(), 2),
+        )
+
+    def _refresh_preview(self, *_):
+        value = self._staged_value()
+        spec = rofi_theme_preview(self.preview_theme_key)
+        palette = load_palette()
+        bg_rgb = tuple(int(palette.bg[index:index + 2], 16) for index in (1, 3, 5))
+        surface_rgb = tuple(int(palette.surface[index:index + 2], 16) for index in (1, 3, 5))
+        alpha = max(0.20, min(1.0, value.opacity))
+        premium = bool(spec["premium"])
+        border = "none" if spec["borderless"] else f"1px solid {palette.border}"
+        shadow = "0 14px 30px rgba(0, 0, 0, 0.36)" if premium else "none"
+        safe_font = "".join(
+            character
+            for character in value.font
+            if character.isalnum() or character in " .,_+-"
+        ).strip() or "sans-serif"
+        font_parts = safe_font.rsplit(" ", 1)
+        font_family = font_parts[0] if len(font_parts) == 2 and font_parts[1].replace(".", "", 1).isdigit() else safe_font
+        preview_width = max(400, min(720, int(value.width * 0.86)))
+        visible_rows = max(3, min(len(self.preview_items), value.lines))
+        for index, item in enumerate(self.preview_items):
+            item.set_visible(index < visible_rows)
+        self.preview_section.set_visible(premium)
+        self.preview_footer.set_visible(premium)
+        self.preview_mock.set_size_request(preview_width, -1)
+        self._preview_provider.load_from_data((
+            f"#{self.preview_name} {{ background-color: rgba({bg_rgb[0]}, {bg_rgb[1]}, {bg_rgb[2]}, {alpha:.2f}); "
+            f"border: {border}; border-radius: {value.radius}px; padding: {value.padding}px; box-shadow: {shadow}; }}\n"
+            f"#{self.preview_name} label {{ font-family: \"{font_family}\"; }}\n"
+            f"#{self.preview_name} .rofi-preview-search {{ background-color: rgba({surface_rgb[0]}, {surface_rgb[1]}, {surface_rgb[2]}, {min(1.0, alpha + 0.08):.2f}); "
+            f"border-radius: {max(0, value.radius - 7)}px; }}\n"
+            f"#{self.preview_name} .rofi-preview-selected {{ background-color: {palette.hover_bg}; color: {palette.fg}; "
+            f"border-left: {'2px solid ' + palette.accent if premium else 'none'}; }}"
+        ).encode())
 
     def _reload_controls(self):
         current = rofi_load()
@@ -2932,24 +3206,35 @@ class RofiPage(Page):
         self.padding.set_value(current.padding)
         self.lines.set_value(current.lines)
         self.opacity.scale.set_value(current.opacity)
+        self._refresh_preview()
 
-    def apply_theme(self, _button, theme_key):
-        ok, message = rofi_apply_theme(theme_key)
-        self.status.set_text(message)
-        if ok:
-            self._reload_controls()
+    def preview_theme(self, _button, theme_key):
+        spec = rofi_theme_preview(theme_key)
+        self.pending_theme = theme_key
+        self.preview_theme_key = theme_key
+        for key, button in self.theme_buttons.items():
+            if key == theme_key:
+                button.add_css_class("selected")
+            else:
+                button.remove_css_class("selected")
+        self.font.set_text(spec["font"])
+        self.width.set_value(spec["width"])
+        self.radius.set_value(spec["radius"])
+        self.padding.set_value(spec["padding"])
+        self.lines.set_value(spec["lines"])
+        self.opacity.scale.set_value(spec["opacity"])
+        self._refresh_preview()
+        self.status.set_text(f'{spec["title"]} is staged in the live preview. Press APPLY ROFI SETTINGS to write it.')
 
     def apply(self, *_):
-        value = RofiState(
-            font=self.font.get_text().strip() or "JetBrainsMono Nerd Font 12",
-            width=int(self.width.get_value()),
-            radius=int(self.radius.get_value()),
-            padding=int(self.padding.get_value()),
-            lines=int(self.lines.get_value()),
-            opacity=round(self.opacity.scale.get_value(), 2),
-        )
-        _, message = rofi_save(value)
-        self.status.set_text(message)
+        value = self._staged_value()
+        if self.pending_theme:
+            ok, message = rofi_apply_theme(self.pending_theme, value)
+        else:
+            ok, message = rofi_save(value)
+        if ok:
+            self.pending_theme = None
+        self.status.set_text(message if ok else "ERROR: " + message)
 
     def open_rofi(self, *_):
         run(["sh", "-lc", "rofi -show drun >/tmp/yakushi-rofi.log 2>&1 &"], timeout=2)
@@ -3154,6 +3439,7 @@ class WaybarPage(Page):
 
         current = waybar_load()
         self.current = current
+        self.pending_preset = None
 
         preview_card = card(
             "// LIVE PREVIEW",
@@ -3170,18 +3456,18 @@ class WaybarPage(Page):
         liquid_button = Gtk.Button()
         liquid_button.add_css_class("preset-card")
         liquid_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
-        liquid_title = Gtk.Label(label="01  LIQUID GLASS", xalign=0)
+        liquid_title = Gtk.Label(label="01  LIQUID GLASS // PREVIEW", xalign=0)
         liquid_title.add_css_class("preset-title")
         liquid_content.append(liquid_title)
         liquid_description = Gtk.Label(
-            label="Translucent gradient pills, fine highlights, restrained shadows and compositor blur.",
+            label="Stage translucent gradient pills, borderless modules, restrained shadows and compositor blur. Nothing is written until APPLY WAYBAR SETTINGS.",
             xalign=0,
         )
         liquid_description.set_wrap(True)
         liquid_description.add_css_class("muted")
         liquid_content.append(liquid_description)
         liquid_button.set_child(liquid_content)
-        liquid_button.connect("clicked", self.apply_liquid_glass)
+        liquid_button.connect("clicked", self.preview_liquid_glass)
         presets.append(liquid_button)
         self.append(presets)
 
@@ -3198,6 +3484,10 @@ class WaybarPage(Page):
         self.radius = spin(current.radius, 0, 24)
         self.padding = spin(current.padding, 2, 24)
         self.opacity = slider(current.opacity, 0.15, 1.0, 0.01)
+        self.outline = Gtk.Switch(active=current.outline)
+        self.outline.set_halign(Gtk.Align.END)
+        self.shadow = Gtk.Switch(active=current.shadow)
+        self.shadow.set_halign(Gtk.Align.END)
 
         settings_grid = Gtk.Grid(column_spacing=12, row_spacing=6)
         settings_grid.set_column_homogeneous(True)
@@ -3210,6 +3500,8 @@ class WaybarPage(Page):
             ("Module roundness", self.radius),
             ("Module padding", self.padding),
             ("Module opacity", self.opacity),
+            ("Module outline", self.outline),
+            ("Module shadow", self.shadow),
         ]
         for index, (label, widget) in enumerate(geometry_rows):
             row = setting_row(label, widget)
@@ -3261,6 +3553,19 @@ class WaybarPage(Page):
         )
         self.append(self.status)
 
+        for control in (
+            self.height,
+            self.margin_top,
+            self.margin_side,
+            self.spacing,
+            self.font_size,
+            self.radius,
+            self.padding,
+        ):
+            control.connect("value-changed", self._refresh_live_preview)
+        self.opacity.scale.connect("value-changed", self._refresh_live_preview)
+        self.outline.connect("notify::active", self._refresh_live_preview)
+        self.shadow.connect("notify::active", self._refresh_live_preview)
         self.rebuild_lanes()
 
     def short_label(self, module: str) -> str:
@@ -3273,6 +3578,28 @@ class WaybarPage(Page):
         for lane_name, lane in self.lanes.items():
             lane.rebuild(self.module_state[lane_name])
         self.preview.rebuild()
+
+    def staged_state(self) -> WaybarState:
+        return WaybarState(
+            height=int(self.height.get_value()),
+            margin_top=int(self.margin_top.get_value()),
+            margin_left=int(self.margin_side.get_value()),
+            margin_right=int(self.margin_side.get_value()),
+            spacing=int(self.spacing.get_value()),
+            font_size=int(self.font_size.get_value()),
+            radius=int(self.radius.get_value()),
+            padding=int(self.padding.get_value()),
+            opacity=round(self.opacity.scale.get_value(), 2),
+            outline=self.outline.get_active(),
+            shadow=self.shadow.get_active(),
+            left=list(self.module_state["Left"]),
+            center=list(self.module_state["Center"]),
+            right=list(self.module_state["Right"]),
+        )
+
+    def _refresh_live_preview(self, *_):
+        if hasattr(self, "preview") and hasattr(self, "module_state"):
+            self.preview.refresh(self.staged_state())
 
     def move_module(self, module: str, destination: str, before: str | None = None):
         for lane_name, modules in self.module_state.items():
@@ -3296,38 +3623,127 @@ class WaybarPage(Page):
         self.rebuild_lanes()
 
     def apply(self, *_):
-        value = WaybarState(
-            height=int(self.height.get_value()),
-            margin_top=int(self.margin_top.get_value()),
-            margin_left=int(self.margin_side.get_value()),
-            margin_right=int(self.margin_side.get_value()),
-            spacing=int(self.spacing.get_value()),
-            font_size=int(self.font_size.get_value()),
-            radius=int(self.radius.get_value()),
-            padding=int(self.padding.get_value()),
-            opacity=round(self.opacity.scale.get_value(), 2),
-            left=list(self.module_state["Left"]),
-            center=list(self.module_state["Center"]),
-            right=list(self.module_state["Right"]),
+        value = self.staged_state()
+        if self.pending_preset == "liquid_glass":
+            ok, message = waybar_apply_preset("liquid_glass", value)
+        else:
+            ok, message = waybar_save(value)
+        if ok:
+            self.pending_preset = None
+        self.status.set_text(message if ok else "ERROR: " + message)
+
+    def preview_liquid_glass(self, *_):
+        self.pending_preset = "liquid_glass"
+        self.height.set_value(34)
+        self.margin_top.set_value(6)
+        self.margin_side.set_value(10)
+        self.spacing.set_value(3)
+        self.font_size.set_value(12)
+        self.radius.set_value(12)
+        self.padding.set_value(9)
+        self.opacity.scale.set_value(0.58)
+        self.outline.set_active(False)
+        self.shadow.set_active(True)
+        self._refresh_live_preview()
+        self.status.set_text("LIQUID GLASS is staged in the live preview. Press APPLY WAYBAR SETTINGS to write it.")
+
+
+class SelfDestructionPage(Page):
+    CONFIRMATION = "DESTROY YAKUSHI"
+
+    def __init__(self):
+        super().__init__()
+        self.append(page_header(
+            "05",
+            "Danger",
+            "Self Destruction",
+            "Remove Yakushi Control Deck, restore its original desktop backups, and uninstall only dependencies that Yakushi can prove it introduced.",
+        ))
+
+        warning = card(
+            "// READ BEFORE CONTINUING",
+            "This operation cannot be undone from inside Yakushi. The dedicated removal terminal stays open with the complete result and any pacman error.",
         )
+        warning.add_css_class("danger-card")
+        warning_text = Gtk.Label(
+            label=(
+                "Your first pre-Yakushi Waybar, Rofi, Kitty, Fastfetch and palette files are restored when that backup is available. "
+                "Hyprland and shell cleanup is limited to blocks carrying explicit Yakushi markers. "
+                "Packages that existed before Yakushi are never selected for removal."
+            ),
+            xalign=0,
+        )
+        warning_text.set_wrap(True)
+        warning_text.add_css_class("danger-copy")
+        warning.append(warning_text)
+        self.append(warning)
 
-        _, message = waybar_save(value)
-        self.status.set_text(message)
+        plan = load_self_destruct_plan()
+        plan_card = card(
+            "// EXACT REMOVAL PLAN",
+            "This list is generated from the current installation metadata. Review it before confirming.",
+        )
+        for line in self_destruct_plan_lines(plan):
+            item = Gtk.Label(label=f"•  {line}", xalign=0)
+            item.set_wrap(True)
+            item.set_max_width_chars(82)
+            item.set_selectable(True)
+            item.add_css_class("removal-plan-item")
+            plan_card.append(item)
+        self.append(plan_card)
 
-    def apply_liquid_glass(self, *_):
-        ok, message = waybar_apply_preset("liquid_glass")
-        if not ok:
-            self.status.set_text("ERROR: " + message)
+        confirmation = card(
+            "// TWO-STEP CONFIRMATION",
+            f"A checked acknowledgement and the exact phrase {self.CONFIRMATION} are both required. The final button then starts removal with one click.",
+        )
+        self.acknowledge = Gtk.CheckButton()
+        acknowledgement_label = Gtk.Label(
+            label="I have read the exact removal plan and understand that the listed files and tracked packages will be removed.",
+            xalign=0,
+        )
+        acknowledgement_label.set_wrap(True)
+        acknowledgement_label.set_max_width_chars(76)
+        self.acknowledge.set_child(acknowledgement_label)
+        confirmation.append(self.acknowledge)
+
+        self.confirmation_entry = Gtk.Entry()
+        self.confirmation_entry.set_placeholder_text(f"Type {self.CONFIRMATION}")
+        confirmation.append(self.confirmation_entry)
+
+        self.destroy_button = Gtk.Button(label="DESTROY YAKUSHI")
+        self.destroy_button.add_css_class("danger")
+        self.destroy_button.set_sensitive(False)
+        self.destroy_button.connect("clicked", self.destroy)
+        confirmation.append(self.destroy_button)
+        self.append(confirmation)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.set_wrap(True)
+        self.status.add_css_class("status")
+        self.append(self.status)
+
+        self.acknowledge.connect("toggled", self._confirmation_changed)
+        self.confirmation_entry.connect("changed", self._confirmation_changed)
+
+    def _confirmation_changed(self, *_):
+        ready = (
+            self.acknowledge.get_active()
+            and self.confirmation_entry.get_text().strip() == self.CONFIRMATION
+        )
+        self.destroy_button.set_sensitive(ready)
+
+    @staticmethod
+    def _quit_application():
+        application = Gtk.Application.get_default()
+        if application is not None:
+            application.quit()
+        return GLib.SOURCE_REMOVE
+
+    def destroy(self, *_):
+        if not self.destroy_button.get_sensitive():
             return
-
-        current = waybar_load()
-        self.current = current
-        self.height.set_value(current.height)
-        self.margin_top.set_value(current.margin_top)
-        self.margin_side.set_value(current.margin_left)
-        self.spacing.set_value(current.spacing)
-        self.font_size.set_value(current.font_size)
-        self.radius.set_value(current.radius)
-        self.padding.set_value(current.padding)
-        self.opacity.scale.set_value(current.opacity)
-        self.status.set_text(message)
+        self.destroy_button.set_sensitive(False)
+        ok, message = launch_self_destruct()
+        self.status.set_text(message if ok else "ERROR: " + message)
+        if ok:
+            GLib.timeout_add(900, self._quit_application)

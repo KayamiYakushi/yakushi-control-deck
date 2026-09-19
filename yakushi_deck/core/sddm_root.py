@@ -100,6 +100,13 @@ def disable():
         shutil.rmtree(STATE_DIR)
 
 
+def purge():
+    """Restore SDDM selection state and remove only Yakushi's theme files."""
+    disable()
+    if THEME_DST.exists():
+        shutil.rmtree(THEME_DST)
+
+
 def main():
     require_root()
     parser = argparse.ArgumentParser()
@@ -107,9 +114,12 @@ def main():
     install_parser = sub.add_parser("install")
     install_parser.add_argument("--source", required=True)
     sub.add_parser("disable")
+    sub.add_parser("purge")
     args = parser.parse_args()
     if args.command == "install":
         install(Path(args.source))
+    elif args.command == "purge":
+        purge()
     else:
         disable()
 

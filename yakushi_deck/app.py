@@ -22,6 +22,7 @@ from .ui.pages import (
     LoginPage,
     NautilusPage,
     RofiPage,
+    SelfDestructionPage,
     TerminalPage,
     ThemePage,
     WallpaperPage,
@@ -162,6 +163,13 @@ class Window(Gtk.ApplicationWindow):
                 [
                     ("lock", "Lock Screen", "施錠", LockPage),
                     ("login", "Login Screen", "ログイン", LoginPage),
+                ],
+            ),
+            (
+                "05",
+                "DANGER",
+                [
+                    ("self-destruction", "Self Destruction", "自壊", SelfDestructionPage),
                 ],
             ),
         ]
@@ -529,22 +537,61 @@ def main():
             min-width: 135px;
         }
 
-        scale trough {
+        scale.deck-slider,
+        scale.deck-slider:focus {
+            outline-style: none;
+            outline-width: 0;
+            outline-color: transparent;
+            outline-offset: 0;
+            box-shadow: none;
+            border: none;
+        }
+
+        scale.deck-slider trough {
             background-color: #161719;
             min-height: 4px;
             border-radius: 0;
+            border: none;
+            outline-style: none;
+            outline-width: 0;
+            outline-color: transparent;
+            outline-offset: 0;
+            box-shadow: none;
         }
 
-        scale highlight {
+        scale.deck-slider highlight {
             background-color: #98404c;
             min-height: 4px;
+            border: none;
+            outline-style: none;
+            outline-width: 0;
+            outline-color: transparent;
+            outline-offset: 0;
+            box-shadow: none;
         }
 
-        scale slider {
+        scale.deck-slider slider {
             min-width: 12px;
             min-height: 12px;
             border-radius: 0;
             background-color: #d4cbc6;
+            border: none;
+            outline-style: none;
+            outline-width: 0;
+            outline-color: transparent;
+            outline-offset: 0;
+            box-shadow: none;
+        }
+
+        scale.deck-slider:focus trough,
+        scale.deck-slider:focus highlight,
+        scale.deck-slider:focus slider {
+            border-color: transparent;
+            outline-style: none;
+            outline-width: 0;
+            outline-color: transparent;
+            outline-offset: 0;
+            box-shadow: none;
         }
 
         switch {
@@ -585,6 +632,43 @@ def main():
             font-family: "JetBrainsMono Nerd Font", monospace;
             font-size: 10px;
             font-weight: 800;
+        }
+
+        button.danger {
+            background-color: #511a22;
+            color: #f2d7d7;
+            border-color: #b94655;
+            font-family: "JetBrainsMono Nerd Font", monospace;
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        button.danger:hover {
+            background-color: #6a202b;
+            border-color: #e45d6e;
+        }
+
+        button.danger:disabled {
+            background-color: #171113;
+            color: #68595b;
+            border-color: #38252a;
+        }
+
+        .danger-card {
+            border-color: #7f2d39;
+            background-color: #13090b;
+        }
+
+        .danger-copy {
+            color: #d9b7b8;
+            font-size: 11px;
+        }
+
+        .removal-plan-item {
+            color: #aaa09d;
+            font-family: "JetBrainsMono Nerd Font", monospace;
+            font-size: 9px;
+            padding: 2px 0;
         }
 
         .preset-card {
@@ -1014,6 +1098,15 @@ def main():
             background: #090b0c;
         }
 
+        button.preset-card.selected {
+            background: #171114;
+            border-color: #87404b;
+        }
+
+        button.preset-card.selected label {
+            color: #e8a29a;
+        }
+
         button.wallpaper-tile {
             background: #08090a;
             min-width: 0;
@@ -1084,6 +1177,31 @@ def main():
             background: #070809;
             border: 1px solid #302d30;
             border-radius: 4px;
+        }
+
+        .session-live-preview {
+            min-height: 260px;
+            background: #090a0b;
+            border: 1px solid #3f292a;
+            border-radius: 8px;
+        }
+
+        .session-live-content {
+            padding: 24px;
+        }
+
+        .session-live-date {
+            color: #b59b97;
+            font-family: "JetBrainsMono Nerd Font", monospace;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .session-live-detail {
+            color: #756b69;
+            font-family: "JetBrainsMono Nerd Font", monospace;
+            font-size: 8px;
+            margin-top: 5px;
         }
 
         .sddm-preview-card {

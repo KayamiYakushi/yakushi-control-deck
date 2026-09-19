@@ -1,3 +1,12 @@
+# v1.3.0
+
+- Removed GTK's blue focus decoration from Yakushi sliders while preserving the existing red track and neutral handle.
+- Converted Terminal, Rofi, Waybar, Lock Screen, and Login Screen previews into staged live previews; preset selection no longer writes those application files before the corresponding Apply action.
+- Added independent **Module outline** and **Module shadow** switches to Bar Studio. Fresh Waybar styling and the Liquid Glass preview now default to outline off and shadow on, without changing module order or click actions.
+- Added the final **Self Destruction** page with an exact generated removal plan, acknowledgement plus typed confirmation, pre-install desktop restoration, SDDM cleanup, and one-click launch in a visible Kitty terminal.
+- Installer metadata now records only packages that were missing before Yakushi installed them. Self Destruction removes that explicit set with `pacman -Rns`; packages with missing legacy provenance are retained rather than guessed.
+- Extended smoke coverage for live-preview wiring, slider focus cleanup, Waybar outline/shadow persistence, staged module ordering, removal-plan validation, and the self-destruction bundle.
+
 # v1.2.29
 
 - Fixed Raycast Glass search relevance by using FZF scoring, disabling history bias, and narrowing desktop-entry matching so a contiguous query such as `spo` ranks Spotify ahead of unrelated fuzzy results.

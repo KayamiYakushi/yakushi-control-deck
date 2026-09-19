@@ -19,10 +19,10 @@ info(){ ((QUIET)) || printf '[INFO] %s\n' "$*"; }
 
 common_required=(
   README.md LICENSE doctor.sh smoke-test.sh install-sddm-theme.sh
-  bind-super-m-lock.fish restore-last-install.sh uninstall.sh
+  bind-super-m-lock.fish restore-last-install.sh uninstall.sh self-destruct.sh
   tools/jsonc_check.py
   yakushi_deck/__init__.py yakushi_deck/__main__.py yakushi_deck/app.py
-  yakushi_deck/core/lockscreen.py yakushi_deck/core/sddm_root.py
+  yakushi_deck/core/lockscreen.py yakushi_deck/core/sddm_root.py yakushi_deck/core/self_destruct.py
   yakushi_deck/core/autocolor.py yakushi_deck/core/nautilus.py yakushi_deck/core/fastfetch.py yakushi_deck/core/frame.py
   integrations/waybar/config.jsonc integrations/waybar/style.css
   integrations/rofi/config.rasi integrations/rofi/yakushi-launcher-opacity.rasi integrations/rofi/yakushi-opacity.rasi integrations/rofi/powermenu.rasi integrations/rofi/scripts/powermenu.sh
@@ -88,10 +88,12 @@ PY
     || bad 'bundled Fastfetch Nerd Font module keys are missing or changed'
 
   ROOT="$ROOT" python3 - <<'PY' >/dev/null 2>&1
+import json
 import os
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 root = Path(os.environ["ROOT"])
 for path in sorted((root / "yakushi_deck").rglob("*.py")):
@@ -100,9 +102,11 @@ for path in sorted((root / "yakushi_deck").rglob("*.py")):
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(root))
 import yakushi_deck.core.apps as apps
+import yakushi_deck.core.self_destruct as self_destruct
 from yakushi_deck.core.theme import _rofi_concrete_override
 from yakushi_deck.core.apps import (
     KittyColorState,
+    KittyState,
     RofiState,
     _rofi_glass_hypr_text,
     _rofi_theme_text,
@@ -203,6 +207,24 @@ with tempfile.TemporaryDirectory() as directory:
     assert "rgba(54, 35, 36, 43%)" in override.read_text()
     assert "button-close {\n    background-color: transparent;" in override.read_text()
 
+    staged_rofi = RofiState(
+        font="Sans 13",
+        width=666,
+        radius=19,
+        padding=14,
+        lines=5,
+        opacity=0.66,
+    )
+    ok, _message = apps.rofi_apply_theme("raycast_glass", staged_rofi)
+    assert ok
+    staged_text = rofi_config.read_text()
+    assert 'font: "Sans 13";' in staged_text
+    assert "width: 666px;" in staged_text
+    assert "border-radius: 19px;" in staged_text
+    assert "padding: 14px;" in staged_text
+    assert "lines: 5;" in staged_text
+    assert "rgba(14, 12, 13, 66%)" in override.read_text()
+
     rofi_config.write_text("ORIGINAL THEME\n")
     override.write_text("ORIGINAL OVERRIDE\n")
     hypr.write_text("hl.config({})\n")
@@ -272,6 +294,17 @@ with tempfile.TemporaryDirectory() as directory:
     assert apps._kitty_value(kitty_text, "tab_bar_style", "") == "fade"
     assert "# YAKUSHI KITTY COLOR MODE: follow" in kitty_text
 
+    ok, _message = apps.kitty_apply_preset(
+        "liquid_glass",
+        KittyColorState("follow", "#0e0c0d", "#e8a29a", "#c86672"),
+        KittyState(font_size=13.5, opacity=0.71, padding=15),
+    )
+    assert ok
+    staged_kitty = kitty.read_text()
+    assert apps._kitty_value(staged_kitty, "font_size", "") == "13.5"
+    assert apps._kitty_value(staged_kitty, "background_opacity", "") == "0.71"
+    assert apps._kitty_value(staged_kitty, "window_padding_width", "") == "15"
+
 # Waybar gets the same material without changing its configured module lanes.
 base_waybar_style = (root / "integrations/waybar/style.css").read_text()
 liquid_waybar = _waybar_liquid_style(base_waybar_style)
@@ -309,16 +342,41 @@ with tempfile.TemporaryDirectory() as directory:
     apps.record = lambda *_args, **_kwargs: None
     apps.time.sleep = lambda _seconds: None
 
+    base_state = apps.waybar_load()
+    assert base_state.outline is False
+    assert base_state.shadow is True
+
     ok, _message = apps.waybar_apply_preset("liquid_glass")
     assert ok
     state = apps.waybar_load()
     assert (state.height, state.margin_top, state.margin_left, state.spacing) == (34, 6, 10, 3)
     assert state.opacity == 0.58
+    assert state.outline is False
+    assert state.shadow is True
     assert state.left == apps._module_array(bundled_config, "modules-left")
     assert state.center == apps._module_array(bundled_config, "modules-center")
     assert state.right == apps._module_array(bundled_config, "modules-right")
     assert "YAKUSHI WAYBAR LIQUID GLASS BEGIN" in waybar_style.read_text()
     assert "YAKUSHI WAYBAR GLASS BEGIN" in hypr.read_text()
+
+    # Outline and shadow are independent, persisted controls. Staged module
+    # lanes must survive applying the Liquid Glass preset in the same commit.
+    staged = replace(
+        state,
+        outline=False,
+        shadow=True,
+        left=list(reversed(state.left)),
+    )
+    ok, _message = apps.waybar_apply_preset("liquid_glass", staged)
+    assert ok
+    staged_result = apps.waybar_load()
+    assert staged_result.outline is False
+    assert staged_result.shadow is True
+    assert staged_result.left == staged.left
+    surface = apps._waybar_surface_prop(waybar_style.read_text(), "border")
+    surface_shadow = apps._waybar_surface_prop(waybar_style.read_text(), "box-shadow")
+    assert surface == "none"
+    assert surface_shadow != "none"
 
     waybar_config.write_text(bundled_config)
     waybar_style.write_text(base_waybar_style)
@@ -339,6 +397,48 @@ with tempfile.TemporaryDirectory() as directory:
     assert waybar_style.read_text() == base_waybar_style
     assert hypr.read_text() == "hl.config({})\n"
 
+# Self Destruction reads only explicit installer provenance and rejects a
+# backup path outside Yakushi's own install-backup directory.
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
+    backups = base / "install-backups"
+    original = backups / "20260919-120000"
+    original.mkdir(parents=True)
+    metadata = base / "install.json"
+    metadata.write_text(json.dumps({
+        "version": "1.3.0",
+        "original_backup": str(original),
+        "managed_packages": ["waybar", "kitty", "waybar"],
+        "legacy_packages_untracked": False,
+        "legacy_config_untracked": False,
+    }))
+    self_destruct.INSTALL_BACKUPS = backups
+    plan = self_destruct.load_plan(metadata)
+    assert plan.original_backup == original
+    assert plan.managed_packages == ("waybar", "kitty")
+    assert plan.legacy_package_provenance is False
+    assert plan.legacy_config_provenance is False
+
+    metadata.write_text(json.dumps({
+        "version": "1.3.0",
+        "original_backup": "/tmp/not-a-yakushi-backup",
+        "managed_packages": ["waybar", "bad package name"],
+    }))
+    plan = self_destruct.load_plan(metadata)
+    assert plan.original_backup is None
+    assert plan.managed_packages == ("waybar",)
+    assert plan.legacy_config_provenance is True
+
+source = (root / "yakushi_deck/app.py").read_text()
+pages = (root / "yakushi_deck/ui/pages.py").read_text()
+common = (root / "yakushi_deck/ui/common.py").read_text()
+assert 'add_css_class("deck-slider")' in common
+assert "scale.deck-slider:focus" in source
+assert "outline-color: transparent" in source
+assert "class SelfDestructionPage" in pages
+for live_page in ("SessionLivePreview", "preview_liquid_glass", "preview_theme", "_refresh_live_preview"):
+    assert live_page in pages
+
 power = (root / "integrations/rofi/scripts/powermenu.sh").read_text()
 for action in ("lock", "suspend", "logout", "reboot", "shutdown"):
     assert f"row {action} " in power
@@ -351,7 +451,7 @@ PY
   fi
 fi
 
-bash_scripts=(doctor.sh uninstall.sh restore-last-install.sh install-sddm-theme.sh smoke-test.sh)
+bash_scripts=(doctor.sh uninstall.sh restore-last-install.sh install-sddm-theme.sh self-destruct.sh smoke-test.sh)
 if ((!INSTALLED_LAYOUT)); then
   bash_scripts+=(install.sh update.sh)
 fi
@@ -415,7 +515,7 @@ version_ok=1
 [[ -n "$version" ]] || version_ok=0
 grep -Fq "Version=$version" "$ROOT/integrations/sddm/yakushi/metadata.desktop" || version_ok=0
 if ((!INSTALLED_LAYOUT)); then
-  grep -Fq "\"version\":\"$version\"" "$ROOT/install.sh" || version_ok=0
+  grep -Fq "VERSION=\"$version\"" "$ROOT/install.sh" || version_ok=0
 fi
 if ((version_ok)); then
   ok "version metadata aligned ($version)"
