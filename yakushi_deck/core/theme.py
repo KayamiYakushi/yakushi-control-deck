@@ -240,7 +240,9 @@ def _rofi_concrete_override(
     surface_alt = surface_alt or surface
     hover = hover or surface_alt
     if shadow is None:
-        shadow = premium
+        # Keep Raycast on its original single-panel glass composition. The
+        # explicit flag is retained only to read older inset-shadow configs.
+        shadow = False
 
     surface_opacity = opacity * 0.28 if premium else opacity
     surface_alt_opacity = opacity * 0.42 if premium else opacity

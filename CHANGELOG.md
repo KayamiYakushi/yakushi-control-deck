@@ -1,5 +1,8 @@
 # v1.3.0
 
+- Restored Raycast Glass to the original v1.2.28 single-panel composition: compact 21px geometry, a fine glass border and the original highlight gradients. The later inset faux-shadow wrapper is no longer generated.
+- Made the restored Raycast Glass theme the bundled install/update default while retaining live staging, FZF relevance tuning and managed Hyprland blur.
+- Retuned Waybar module depth with two restrained shadows whose footprint remains inside the existing module margins, avoiding both the previous hard clipping and the overly faint first correction.
 - Removed GTK's blue focus decoration from Yakushi sliders while preserving the existing red track and neutral handle.
 - Converted Terminal, Rofi, Waybar, Lock Screen, and Login Screen previews into staged live previews; preset selection no longer writes those application files before the corresponding Apply action.
 - Added independent **Module outline** and **Module shadow** switches to Bar Studio. Fresh Waybar styling and the Liquid Glass preview now default to outline off and shadow on, without changing module order or click actions.

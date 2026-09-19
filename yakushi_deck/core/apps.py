@@ -702,7 +702,6 @@ def _rofi_theme_text(name: str, font: str) -> str:
     key, _title, _description, spec = _rofi_theme_spec(name)
     font = str(spec.get("font", font or "JetBrainsMono Nerd Font 12")).replace('"', "")
     is_raycast = spec.get("layout") == "raycast"
-    shadow_marker = "/* YAKUSHI ROFI SHADOW: inset */\n" if is_raycast else ""
     main_children = (
         "[ inputbar, textbox-section, message, listview, footer ]"
         if is_raycast
@@ -725,31 +724,6 @@ def _rofi_theme_text(name: str, font: str) -> str:
         if is_raycast
         else ""
     )
-    # Rasi has no CSS box-shadow property. For Raycast Glass the outer window
-    # is therefore a slim, dark translucent halo and the actual glass panel is
-    # the inset mainbox. This produces a compositor-safe shadow without
-    # changing the launcher layer namespace or relying on unsupported syntax.
-    if is_raycast:
-        window_background = "transparent"
-        window_border = 0
-        window_border_color = "transparent"
-        window_radius = int(spec["window_radius"]) + 6
-        window_padding = "4px 5px 8px 5px"
-        mainbox_style = (
-            "    background-color: @yak-rofi-bg;\n"
-            "    background-image: linear-gradient(to bottom, white/6%, black/5%);\n"
-            "    border: 1px;\n"
-            "    border-color: white/13%;\n"
-            f'    border-radius: {int(spec["window_radius"])}px;\n'
-            f'    padding: {spec["window_padding"]}px;\n'
-        )
-    else:
-        window_background = "@yak-rofi-bg"
-        window_border = int(spec["window_border"])
-        window_border_color = "@yak-border"
-        window_radius = int(spec["window_radius"])
-        window_padding = f'{spec["window_padding"]}px'
-        mainbox_style = "    background-color: transparent;\n"
     raycast_widgets = (
         """
 
@@ -760,6 +734,11 @@ textbox-section {
     text-color: white/42%;
     font: "Sans Bold 9";
     padding: 10px 11px 5px 11px;
+}
+
+window {
+    border-color: white/13%;
+    background-image: linear-gradient(to bottom, white/6%, black/5%);
 }
 
 inputbar {
@@ -864,7 +843,7 @@ button-open {
         else ""
     )
     return f"""/* YAKUSHI ROFI THEME: {key} */
-{shadow_marker}/* Geometry comes from Rofi Studio; all colors come from Theme Studio. */
+/* Geometry comes from Rofi Studio; all colors come from Theme Studio. */
 @import "../hypr/colors.rasi"
 
 configuration {{
@@ -891,16 +870,17 @@ configuration {{
 
 window {{
     transparency: "real";
-    background-color: {window_background};
-    border: {window_border}px;
-    border-color: {window_border_color};
-    border-radius: {window_radius}px;
+    background-color: @yak-rofi-bg;
+    border: {spec["window_border"]}px;
+    border-color: @yak-border;
+    border-radius: {spec["window_radius"]}px;
     width: {spec["width"]}px;
-    padding: {window_padding};
+    padding: {spec["window_padding"]}px;
 }}
 
 mainbox {{
-{mainbox_style}    children: {main_children};
+    background-color: transparent;
+    children: {main_children};
     spacing: {spec["main_spacing"]}px;
 }}
 
@@ -1076,7 +1056,7 @@ def rofi_apply_theme(name: str, value: RofiState | None = None) -> tuple[bool, s
             base,
             theme_opacity,
             premium=key == "raycast_glass",
-            shadow=key == "raycast_glass",
+            shadow=False,
         ),
     )
 
@@ -1251,7 +1231,9 @@ def _rofi_override_text(
             and "/* YAKUSHI ROFI THEME: raycast_glass */" in ROFI_CONFIG.read_text()
         )
     if shadow is None:
-        shadow = premium
+        # Raycast's original single-panel composition is the default. The
+        # inset-shadow form remains readable only for migrating older configs.
+        shadow = False
 
     surface_opacity = opacity * 0.28 if premium else opacity
     surface_alt_opacity = opacity * 0.42 if premium else opacity
@@ -1591,7 +1573,7 @@ def _waybar_liquid_style(text: str) -> str:
         ("border-radius", "12px"),
         ("padding", "2px 9px"),
         ("margin", "4px 2px"),
-        ("box-shadow", "0 2px 4px -2px alpha(@bg, 0.38), inset 0 1px alpha(@fg, 0.06)"),
+        ("box-shadow", "0 2px 6px -4px alpha(@bg, 0.58), 0 1px 3px -2px alpha(@bg, 0.26), inset 0 1px alpha(@fg, 0.06)"),
     ):
         text, ok = _set_css_rule_prop(text, common, prop, value)
         if not ok:
@@ -1613,7 +1595,7 @@ def _waybar_liquid_style(text: str) -> str:
                 ("background-color", "alpha(@accent, 0.72)"),
                 ("background-image", "linear-gradient(to bottom, alpha(@fg, 0.12), alpha(@bg, 0.04))"),
                 ("color", "@selected_fg"),
-                ("box-shadow", "inset 0 1px alpha(@fg, 0.10), 0 1px 3px -1px alpha(@bg, 0.24)"),
+                ("box-shadow", "inset 0 1px alpha(@fg, 0.10), 0 1px 4px -2px alpha(@bg, 0.34)"),
             ),
         ),
         (
@@ -1741,7 +1723,7 @@ def _waybar_style_with_state(style: str, value: WaybarState) -> tuple[str, str |
         ("border", outline if value.outline else "none", "#custom-launcher,"),
         (
             "box-shadow",
-            "0 2px 4px -2px alpha(@bg, 0.38), inset 0 1px alpha(@fg, 0.06)" if value.shadow else "none",
+            "0 2px 6px -4px alpha(@bg, 0.58), 0 1px 3px -2px alpha(@bg, 0.26), inset 0 1px alpha(@fg, 0.06)" if value.shadow else "none",
             "#custom-launcher,",
         ),
     )

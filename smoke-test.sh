@@ -119,7 +119,7 @@ presets = {key: (title, description) for key, title, description in rofi_theme_p
 assert "raycast_glass" in presets
 raycast = _rofi_theme_text("raycast_glass", "JetBrainsMono Nerd Font 12")
 assert "/* YAKUSHI ROFI THEME: raycast_glass */" in raycast
-assert "/* YAKUSHI ROFI SHADOW: inset */" in raycast
+assert "/* YAKUSHI ROFI SHADOW: inset */" not in raycast
 assert "children: [ inputbar, textbox-section, message, listview, footer ];" in raycast
 assert 'matching: "fuzzy";' in raycast
 assert 'sorting-method: "fzf";' in raycast
@@ -140,13 +140,21 @@ assert 'action: "kb-accept-entry";' in raycast
 assert raycast.rstrip().endswith('@import "yakushi-launcher-opacity.rasi"')
 window = raycast.split("window {", 1)[1].split("}", 1)[0]
 mainbox = raycast.split("mainbox {", 1)[1].split("}", 1)[0]
-assert "background-color: transparent;" in window
-assert "border-radius: 27px;" in window
-assert "padding: 4px 5px 8px 5px;" in window
-assert "background-color: @yak-rofi-bg;" in mainbox
-assert "border: 1px;" in mainbox
-assert "border-radius: 21px;" in mainbox
-assert "padding: 10px;" in mainbox
+assert "background-color: @yak-rofi-bg;" in window
+assert "border: 1px;" in window
+assert "border-radius: 21px;" in window
+assert "padding: 10px;" in window
+assert "background-color: transparent;" in mainbox
+assert (root / "integrations/rofi/config.rasi").read_text() == raycast
+assert (root / "integrations/rofi/yakushi-launcher-opacity.rasi").read_text() == apps._rofi_override_text(
+    "#0e0c0d",
+    0.78,
+    "#1a1414",
+    "#231919",
+    "#362324",
+    premium=True,
+    shadow=False,
+)
 
 lua = _rofi_glass_hypr_text("hl.config({})\n", "lua", True)
 assert lua.count("YAKUSHI ROFI GLASS BEGIN") == 1
@@ -200,7 +208,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert ok
     assert "YAKUSHI ROFI GLASS BEGIN" in hypr.read_text()
     assert "fixed-height: false;" in rofi_config.read_text()
-    assert "rgba(0, 0, 0, 14%)" in override.read_text()
+    assert "rgba(0, 0, 0, 14%)" not in override.read_text()
     assert "rgba(14, 12, 13, 78%)" in override.read_text()
     assert "rgba(26, 20, 20, 22%)" in override.read_text()
     assert "rgba(35, 25, 25, 33%)" in override.read_text()
@@ -255,8 +263,8 @@ premium_override = _rofi_concrete_override(
 )
 assert "button-close {\n    background-color: transparent;" in premium_override
 assert "button-open {\n    background-color: rgba(54, 35, 36, 43%);" in premium_override
-assert "window {\n    transparency: \"real\";\n    background-color: rgba(0, 0, 0, 14%);" in premium_override
-assert "mainbox {\n    background-color: rgba(14, 12, 13, 78%);" in premium_override
+assert "window {\n    transparency: \"real\";\n    background-color: rgba(14, 12, 13, 78%);" in premium_override
+assert "mainbox {\n    background-color: transparent;" in premium_override
 
 legacy_premium_override = _rofi_concrete_override(
     "#0e0c0d",
@@ -313,7 +321,7 @@ assert liquid_waybar_twice.count("YAKUSHI WAYBAR STYLE: liquid_glass") == 1
 assert liquid_waybar_twice.count("YAKUSHI WAYBAR LIQUID GLASS BEGIN") == 1
 assert "background-color: alpha(@surface, 0.58);" in liquid_waybar_twice
 assert "background-image: linear-gradient" in liquid_waybar_twice
-assert "box-shadow: 0 2px 4px -2px" in liquid_waybar_twice
+assert "box-shadow: 0 2px 6px -4px" in liquid_waybar_twice
 assert "tooltip {" in liquid_waybar_twice
 
 waybar_lua = _waybar_glass_hypr_text("hl.config({})\n", "lua", True)

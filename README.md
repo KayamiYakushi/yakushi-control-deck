@@ -32,6 +32,7 @@ The installer deploys a tested matching setup:
 
 - Left click **薬** → Yakushi Control Deck
 - Right click **薬** → Rofi applications
+- Rofi applications → restored compact **RAYCAST GLASS** layout by default
 - Power button → Rofi power menu
 - Shared `~/.config/hypr/colors.css` + `colors.rasi` theme roles
 - Hardware-independent CPU/GPU temperature detection for common drivers
@@ -152,11 +153,11 @@ MIT
 
 Launcher opacity is stored in `~/.config/rofi/yakushi-launcher-opacity.rasi` and imported last, so earlier theme rules cannot shadow the slider. The power menu keeps its separate `yakushi-opacity.rasi` window rule, preventing launcher presets from changing its five-action layout.
 
-Raycast Glass uses FZF result scoring without launch-history bias, so contiguous application-name matches rank predictably. Its visual shadow is an inset Rasi layer rather than an unsupported CSS property, leaving the compositor blur and native Rofi buttons intact.
+Raycast Glass uses FZF result scoring without launch-history bias, so contiguous application-name matches rank predictably. Its original compact single-panel surface, fine border and subtle highlight gradients leave compositor blur and native Rofi buttons intact without a second faux-shadow wrapper.
 
 ## Liquid Glass suite
 
-- **Rofi Studio → RAYCAST GLASS** applies the compact launcher, relevance tuning, subtle outer shadow and managed Hyprland layer blur.
+- **Rofi Studio → RAYCAST GLASS** applies the original compact single-panel launcher, relevance tuning and managed Hyprland layer blur.
 - **Bar Studio → LIQUID GLASS** applies translucent gradient module pills, hairline highlights, soft shadows and Waybar layer blur without changing module order or click actions.
 - **Terminal Studio → LIQUID GLASS** applies 78% tonal transparency, Kitty's native background blur, balanced padding and a fade tab bar. It also enables **FOLLOW YAKUSHI THEME** while preserving the configured font size and shell setup.
 

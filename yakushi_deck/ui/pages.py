@@ -540,7 +540,7 @@ class WaybarMiniPreview(Gtk.Box):
         bg_rgb = tuple(int(palette.surface[index:index + 2], 16) for index in (1, 3, 5))
         alpha = max(0.15, min(1.0, float(value.opacity)))
         border = "1px solid rgba(232, 162, 154, 0.34)" if value.outline else "none"
-        shadow = "0 2px 4px -2px rgba(0, 0, 0, 0.42)" if value.shadow else "none"
+        shadow = "0 2px 6px -4px rgba(0, 0, 0, 0.58), 0 1px 3px -2px rgba(0, 0, 0, 0.26)" if value.shadow else "none"
         self._provider.load_from_data((
             f"#{self.preview_name} {{ min-height: {max(28, min(60, int(value.height)))}px; }}\n"
             ".waybar-preview-chip { "
@@ -3173,7 +3173,7 @@ class RofiPage(Page):
         alpha = max(0.20, min(1.0, value.opacity))
         premium = bool(spec["premium"])
         border = "none" if spec["borderless"] else f"1px solid {palette.border}"
-        shadow = "0 14px 30px rgba(0, 0, 0, 0.36)" if premium else "none"
+        shadow = "none"
         safe_font = "".join(
             character
             for character in value.font
@@ -3190,6 +3190,7 @@ class RofiPage(Page):
         self.preview_mock.set_size_request(preview_width, -1)
         self._preview_provider.load_from_data((
             f"#{self.preview_name} {{ background-color: rgba({bg_rgb[0]}, {bg_rgb[1]}, {bg_rgb[2]}, {alpha:.2f}); "
+            f"background-image: {'linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.05))' if premium else 'none'}; "
             f"border: {border}; border-radius: {value.radius}px; padding: {value.padding}px; box-shadow: {shadow}; }}\n"
             f"#{self.preview_name} label {{ font-family: \"{font_family}\"; }}\n"
             f"#{self.preview_name} .rofi-preview-search {{ background-color: rgba({surface_rgb[0]}, {surface_rgb[1]}, {surface_rgb[2]}, {min(1.0, alpha + 0.08):.2f}); "

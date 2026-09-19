@@ -2,6 +2,12 @@
 
 This release makes previews honest, gives Bar Studio explicit surface controls, and adds a guarded complete-removal path.
 
+## Raycast and Waybar polish
+
+- Raycast Glass again uses its original compact single-panel composition, fine border and highlight gradients. The temporary inset faux-shadow wrapper has been removed without losing live staging, search relevance tuning or Hyprland blur.
+- The restored Raycast Glass style is the bundled install/update default.
+- Waybar shadows now use a restrained two-layer falloff that remains inside the existing module margins, improving visible depth without bringing back clipped edges.
+
 ## Live before Apply
 
 - Terminal geometry, opacity and colors update in the embedded preview.

@@ -1,13 +1,21 @@
-/* YAKUSHI ROFI THEME: signature */
-/* Unified surface layout. Colors are supplied by Yakushi Theme Studio. */
+/* YAKUSHI ROFI THEME: raycast_glass */
+/* Geometry comes from Rofi Studio; all colors come from Theme Studio. */
 @import "../hypr/colors.rasi"
 
 configuration {
     modi: "drun,run,filebrowser,window";
     show-icons: true;
     display-drun: " ";
+    display-run: " ";
+    display-filebrowser: "󰉋 ";
+    display-window: "󰖯 ";
+    matching: "fuzzy";
+    sorting-method: "fzf";
+    sort: true;
+    disable-history: true;
+    drun-match-fields: "name,generic,exec";
     drun-display-format: "{name}";
-    font: "JetBrainsMono Nerd Font 12";
+    font: "Sans 11";
 }
 
 * {
@@ -29,22 +37,22 @@ window {
     background-color: @yak-rofi-bg;
     border: 1px;
     border-color: @yak-border;
-    border-radius: 18px;
-    width: 600px;
-    padding: 18px;
+    border-radius: 21px;
+    width: 620px;
+    padding: 10px;
 }
 
 mainbox {
     background-color: transparent;
-    children: [ inputbar, listview ];
-    spacing: 10px;
+    children: [ inputbar, textbox-section, message, listview, footer ];
+    spacing: 0px;
 }
 
 inputbar {
     background-color: @yak-surface-alt;
     border: 1px;
     border-color: @yak-border;
-    border-radius: 11px;
+    border-radius: 12px;
     padding: 10px 13px;
     children: [ prompt, entry ];
 }
@@ -66,23 +74,24 @@ listview {
     background-color: @yak-surface;
     border: 0px;
     border-color: #00000000;
-    border-radius: 12px;
+    border-radius: 11px;
     padding: 4px;
-    lines: 7;
+    lines: 6;
     columns: 1;
-    spacing: 0px;
+    spacing: 2px;
     cycle: true;
     dynamic: true;
+    fixed-height: false;
     scrollbar: false;
 }
 
 element {
     background-color: transparent;
     text-color: @yak-fg;
-    padding: 10px 11px;
-    border: 0px;
+    padding: 8px 10px;
+    border: 0px 0px 0px 2px;
     border-color: #00000000;
-    border-radius: 8px;
+    border-radius: 9px;
 }
 
 element normal.normal {
@@ -114,7 +123,7 @@ element-text {
 
 element-icon {
     background-color: transparent;
-    size: 20px;
+    size: 22px;
     margin: 0px 10px 0px 0px;
 }
 
@@ -127,5 +136,119 @@ textbox {
     background-color: transparent;
     text-color: @yak-muted;
 }
+
+
+textbox-section {
+    expand: false;
+    content: "APPLICATIONS";
+    background-color: transparent;
+    text-color: white/42%;
+    font: "Sans Bold 9";
+    padding: 10px 11px 5px 11px;
+}
+
+window {
+    border-color: white/13%;
+    background-image: linear-gradient(to bottom, white/6%, black/5%);
+}
+
+inputbar {
+    border-color: white/11%;
+    background-image: linear-gradient(to bottom, white/7%, white/2%);
+}
+
+prompt {
+    font: "JetBrainsMono Nerd Font 12";
+}
+
+entry {
+    font: "Sans 12";
+    text-color: white/88%;
+    placeholder: "Search applications…";
+    placeholder-color: white/46%;
+}
+
+listview {
+    background-image: linear-gradient(to bottom, white/2%, black/3%);
+}
+
+element-text {
+    font: "Sans 11";
+}
+
+element normal.normal {
+    text-color: white/82%;
+}
+
+element alternate.normal {
+    text-color: white/82%;
+}
+
+element selected {
+    border-color: @yak-accent;
+    text-color: white/95%;
+    background-image: linear-gradient(to bottom, white/8%, white/2%);
+}
+
+element selected.normal {
+    border-color: @yak-accent;
+    text-color: white/95%;
+    background-image: linear-gradient(to bottom, white/8%, white/2%);
+}
+
+footer {
+    expand: false;
+    orientation: horizontal;
+    background-color: transparent;
+    border: 1px 0px 0px 0px;
+    border-color: white/8%;
+    padding: 8px 7px 0px 7px;
+    margin: 6px 0px 0px 0px;
+    spacing: 6px;
+    children: [ textbox-footer-label, footer-spacer, button-close, button-open ];
+}
+
+textbox-footer-label {
+    expand: false;
+    content: "薬  YAKUSHI";
+    background-color: transparent;
+    text-color: white/38%;
+    font: "JetBrainsMono Nerd Font Bold 9";
+    vertical-align: 0.5;
+}
+
+footer-spacer {
+    expand: true;
+}
+
+button-close {
+    expand: false;
+    content: "Esc";
+    action: "kb-cancel";
+    background-color: transparent;
+    text-color: white/48%;
+    border: 0px;
+    border-color: transparent;
+    border-radius: 6px;
+    padding: 3px 6px;
+    font: "Sans 10";
+    vertical-align: 0.5;
+}
+
+button-open {
+    expand: false;
+    content: "↵  Open";
+    action: "kb-accept-entry";
+    background-color: @yak-hover;
+    text-color: white/90%;
+    border: 1px;
+    border-color: white/12%;
+    border-radius: 7px;
+    padding: 3px 8px;
+    font: "Sans 10";
+    background-image: linear-gradient(to bottom, white/8%, white/2%);
+    vertical-align: 0.5;
+}
+
 
 @import "yakushi-launcher-opacity.rasi"
