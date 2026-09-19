@@ -509,7 +509,7 @@ hl.layer_rule({{
     name         = "yakushi-rofi-glass",
     match        = {{ namespace = "rofi" }},
     blur         = true,
-    ignore_alpha = 0.20,
+    ignore_alpha = 0.08,
     xray         = false,
 }})
 {ROFI_GLASS_LUA_END}'''
@@ -519,7 +519,7 @@ layerrule {{
     name = yakushi-rofi-glass
     match:namespace = rofi
     blur = true
-    ignore_alpha = 0.20
+    ignore_alpha = 0.08
     xray = false
 }}
 {ROFI_GLASS_CONF_END}'''
@@ -531,6 +531,61 @@ def _rofi_glass_hypr_text(text: str, style: str, enabled: bool) -> str:
         return cleaned
     return cleaned.rstrip() + "\n\n" + _rofi_glass_rule(style) + "\n"
 
+
+def ensure_rofi_glass() -> tuple[bool, str]:
+    """Install or refresh the managed Rofi layer-blur rule safely.
+
+    The release installer uses this after deploying the bundled Raycast theme.
+    It also repairs older installs when a user saves Raycast fine tuning without
+    reselecting the preset. A live Hyprland session is reloaded and checked;
+    offline installs keep the rule ready for the next login.
+    """
+    hypr_config, hypr_style = _rofi_hypr_config()
+    if hypr_config is None or hypr_style is None:
+        return True, "No Hyprland config was found; Rofi layer blur was not changed."
+
+    original = hypr_config.read_text()
+    updated = _rofi_glass_hypr_text(original, hypr_style, True)
+    if updated == original:
+        return True, "Rofi Hyprland layer blur is already configured."
+
+    # HYPRLAND_INSTANCE_SIGNATURE is exported only inside a live Hyprland
+    # session. Probe configerrors as well so stale environments do not turn an
+    # otherwise valid offline install into a failure.
+    before_errors = ""
+    live_session = bool(os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"))
+    if live_session:
+        probe = run(["hyprctl", "configerrors"], timeout=3.0)
+        live_session = probe.returncode == 0
+        before_errors = probe.stdout.strip() if live_session else ""
+
+    try:
+        _write_preserving_symlink(hypr_config, updated)
+    except Exception as exc:
+        return False, f"Rofi blur rule could not be written: {exc}"
+
+    if not live_session:
+        return True, "Rofi Hyprland layer blur is ready for the next session."
+
+    def rollback() -> None:
+        _write_preserving_symlink(hypr_config, original)
+        run(["hyprctl", "reload"], timeout=5.0)
+
+    reload_proc = run(["hyprctl", "reload"], timeout=5.0)
+    if reload_proc.returncode != 0:
+        rollback()
+        return False, "Hyprland rejected the Rofi blur rule; its config was restored."
+
+    time.sleep(0.20)
+    after_errors = run(["hyprctl", "configerrors"], timeout=3.0).stdout.strip()
+    if after_errors and after_errors != before_errors:
+        rollback()
+        return False, (
+            "A new Hyprland config error appeared; its config was restored: "
+            f"{after_errors}"
+        )
+
+    return True, "Rofi Hyprland layer blur was enabled and verified."
 
 
 ROFI_THEME_PRESETS = (
@@ -1439,6 +1494,9 @@ def rofi_save(value: RofiState) -> tuple[bool, str]:
         files.append(HYPR_COLORS_RASI)
     if ROFI_LAUNCHER_OPACITY_OVERRIDE.exists():
         files.append(ROFI_LAUNCHER_OPACITY_OVERRIDE)
+    hypr_config, _hypr_style = _rofi_hypr_config()
+    if premium and hypr_config is not None:
+        files.append(hypr_config)
     record("Rofi settings", files=files)
 
     atomic_write(ROFI_CONFIG, text)
@@ -1460,8 +1518,27 @@ def rofi_save(value: RofiState) -> tuple[bool, str]:
                 pass
         return False, "Rofi validation failed. Changes were rolled back."
 
+    glass_message = ""
+    if premium:
+        glass_ok, glass_message = ensure_rofi_glass()
+        if not glass_ok:
+            atomic_write(ROFI_CONFIG, original)
+            if HYPR_COLORS_RASI.exists():
+                atomic_write(HYPR_COLORS_RASI, colors_original)
+            if override_original:
+                atomic_write(ROFI_LAUNCHER_OPACITY_OVERRIDE, override_original)
+            else:
+                try:
+                    ROFI_LAUNCHER_OPACITY_OVERRIDE.unlink()
+                except FileNotFoundError:
+                    pass
+            return False, f"Rofi blur validation failed. Settings were rolled back. {glass_message}"
+
     percent = round(max(0.0, min(1.0, value.opacity)) * 100)
-    return True, f"Rofi background opacity set to {percent}% and applied as the final window rule."
+    message = f"Rofi background opacity set to {percent}% and applied as the final window rule."
+    if glass_message:
+        message += " " + glass_message
+    return True, message
 
 
 # ---------- Waybar ----------

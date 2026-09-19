@@ -51,7 +51,7 @@ Fish users can run:
 ./install.fish
 ```
 
-The installer uses official Arch repositories only. Existing Waybar, Rofi, shared color, Kitty and Fastfetch files are backed up under:
+The installer uses official Arch repositories only. Existing Waybar, Rofi, shared color, active Hyprland compositor, Kitty and Fastfetch files are backed up under:
 
 ```text
 ~/.config/yakushi-control-deck/install-backups/<timestamp>/
@@ -153,7 +153,7 @@ MIT
 
 Launcher opacity is stored in `~/.config/rofi/yakushi-launcher-opacity.rasi` and imported last, so earlier theme rules cannot shadow the slider. The power menu keeps its separate `yakushi-opacity.rasi` window rule, preventing launcher presets from changing its five-action layout.
 
-Raycast Glass uses FZF result scoring without launch-history bias, so contiguous application-name matches rank predictably. Its original compact single-panel surface, fine border and subtle highlight gradients leave compositor blur and native Rofi buttons intact without a second faux-shadow wrapper.
+Raycast Glass uses FZF result scoring without launch-history bias, so contiguous application-name matches rank predictably. Its original compact single-panel surface, fine border and subtle highlight gradients leave compositor blur and native Rofi buttons intact without a second faux-shadow wrapper. Install/update and Raycast fine-tuning both ensure the managed Hyprland layer rule is present; a live reload is validated and rolled back if Hyprland reports a new error.
 
 ## Liquid Glass suite
 

@@ -159,13 +159,62 @@ assert (root / "integrations/rofi/yakushi-launcher-opacity.rasi").read_text() ==
 lua = _rofi_glass_hypr_text("hl.config({})\n", "lua", True)
 assert lua.count("YAKUSHI ROFI GLASS BEGIN") == 1
 assert 'match        = { namespace = "rofi" }' in lua
-assert "ignore_alpha = 0.20" in lua
+assert "ignore_alpha = 0.08" in lua
 assert "xray         = false" in lua
 assert "YAKUSHI ROFI GLASS" not in _rofi_glass_hypr_text(lua, "lua", False)
 
 conf = _rofi_glass_hypr_text("# Hyprland\n", "conf", True)
 assert "layerrule {" in conf
 assert "match:namespace = rofi" in conf
+assert "ignore_alpha = 0.08" in conf
+
+# Installing/updating the bundled Raycast default must install its compositor
+# rule even when the user does not reselect the preset in Rofi Studio.
+installer = (root / "install.sh").read_text()
+assert "ensure_rofi_glass" in installer
+assert 'backup_file "$HOME/.config/hypr/hyprland.lua"' in installer
+assert 'backup_file "$HOME/.config/hypr/hyprland.conf"' in installer
+
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
+    hypr = base / "hyprland.lua"
+    hypr.write_text("hl.config({})\n")
+    apps._rofi_hypr_config = lambda: (hypr, "lua")
+    apps.time.sleep = lambda _seconds: None
+
+    def glass_run(command, timeout=5.0):
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    previous_signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = "yakushi-smoke-test"
+    apps.run = glass_run
+    ok, message = apps.ensure_rofi_glass()
+    assert ok and "enabled and verified" in message
+    assert hypr.read_text().count("YAKUSHI ROFI GLASS BEGIN") == 1
+    assert "ignore_alpha = 0.08" in hypr.read_text()
+    ok, message = apps.ensure_rofi_glass()
+    assert ok and "already configured" in message
+    assert hypr.read_text().count("YAKUSHI ROFI GLASS BEGIN") == 1
+
+    original_hypr = "hl.config({})\n"
+    hypr.write_text(original_hypr)
+    error_checks = [0]
+
+    def glass_run_with_new_error(command, timeout=5.0):
+        if command[:2] == ["hyprctl", "configerrors"]:
+            error_checks[0] += 1
+            output = "" if error_checks[0] == 1 else "new glass test error"
+            return subprocess.CompletedProcess(command, 0, output, "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    apps.run = glass_run_with_new_error
+    ok, message = apps.ensure_rofi_glass()
+    assert not ok and "config error" in message
+    assert hypr.read_text() == original_hypr
+    if previous_signature is None:
+        os.environ.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+    else:
+        os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = previous_signature
 
 # Exercise the transactional path without touching the real home directory.
 with tempfile.TemporaryDirectory() as directory:
@@ -214,6 +263,22 @@ with tempfile.TemporaryDirectory() as directory:
     assert "rgba(35, 25, 25, 33%)" in override.read_text()
     assert "rgba(54, 35, 36, 43%)" in override.read_text()
     assert "button-close {\n    background-color: transparent;" in override.read_text()
+
+    # Fine tuning an already-selected Raycast theme must repair a missing
+    # compositor rule without requiring the preset card to be selected again.
+    hypr.write_text("hl.config({})\n")
+    tuned_rofi = RofiState(
+        font="Sans 11",
+        width=620,
+        radius=21,
+        padding=10,
+        lines=6,
+        opacity=0.74,
+    )
+    ok, _message = apps.rofi_save(tuned_rofi)
+    assert ok
+    assert "YAKUSHI ROFI GLASS BEGIN" in hypr.read_text()
+    assert "rgba(14, 12, 13, 74%)" in override.read_text()
 
     staged_rofi = RofiState(
         font="Sans 13",

@@ -6,6 +6,7 @@ This release makes previews honest, gives Bar Studio explicit surface controls, 
 
 - Raycast Glass again uses its original compact single-panel composition, fine border and highlight gradients. The temporary inset faux-shadow wrapper has been removed without losing live staging, search relevance tuning or Hyprland blur.
 - The restored Raycast Glass style is the bundled install/update default.
+- Install and update now ensure Raycast's managed Hyprland layer-blur rule is present, back up the compositor config before touching it, and roll back a rejected live reload. Saving Raycast fine tuning repairs the rule too, while its original 78% glass balance remains unchanged.
 - Waybar shadows now use a restrained two-layer falloff that remains inside the existing module margins, improving visible depth without bringing back clipped edges.
 
 ## Live before Apply

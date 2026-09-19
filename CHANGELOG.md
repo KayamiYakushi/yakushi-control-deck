@@ -1,5 +1,7 @@
 # v1.3.0
 
+- Fixed Raycast Glass installs and updates leaving the translucent Rofi theme without its Hyprland layer-blur rule. The installer now backs up the active compositor config, installs the rule idempotently, validates a live reload and restores the original file on error.
+- Lowered Raycast's layer alpha cutoff so its soft translucent edges participate in compositor blur, while keeping the original 78% master opacity and single-panel styling unchanged. Saving Raycast fine tuning now also repairs a missing blur rule.
 - Restored Raycast Glass to the original v1.2.28 single-panel composition: compact 21px geometry, a fine glass border and the original highlight gradients. The later inset faux-shadow wrapper is no longer generated.
 - Made the restored Raycast Glass theme the bundled install/update default while retaining live staging, FZF relevance tuning and managed Hyprland blur.
 - Retuned Waybar module depth with two restrained shadows whose footprint remains inside the existing module margins, avoiding both the previous hard clipping and the overly faint first correction.

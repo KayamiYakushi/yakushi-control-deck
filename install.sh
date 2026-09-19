@@ -94,7 +94,7 @@ mkdir -p "$BACKUP" "$BIN" "$DATA"
 backup_file(){ local src="$1" rel="$2"; [[ -e "$src" ]] || return 0; mkdir -p "$BACKUP/$(dirname "$rel")"; cp -a "$src" "$BACKUP/$rel"; }
 backup_file "$HOME/.config/waybar/config.jsonc" waybar/config.jsonc; backup_file "$HOME/.config/waybar/style.css" waybar/style.css; backup_file "$HOME/.config/waybar/scripts" waybar/scripts
 backup_file "$HOME/.config/rofi/config.rasi" rofi/config.rasi; backup_file "$HOME/.config/rofi/yakushi-launcher-opacity.rasi" rofi/yakushi-launcher-opacity.rasi; backup_file "$HOME/.config/rofi/yakushi-opacity.rasi" rofi/yakushi-opacity.rasi; backup_file "$HOME/.config/rofi/powermenu.rasi" rofi/powermenu.rasi; backup_file "$HOME/.config/rofi/scripts" rofi/scripts; backup_file "$HOME/.config/rofi/icons/power" rofi/icons/power
-backup_file "$HOME/.config/hypr/colors.css" hypr/colors.css; backup_file "$HOME/.config/hypr/colors.rasi" hypr/colors.rasi; backup_file "$HOME/.config/kitty/kitty.conf" kitty/kitty.conf; backup_file "$HOME/.config/kitty/yakushi-colors.conf" kitty/yakushi-colors.conf; backup_file "$HOME/.config/fastfetch/config.jsonc" fastfetch/config.jsonc; backup_file "$HOME/.config/fastfetch/logo.txt" fastfetch/logo.txt; backup_file "$HOME/.config/fastfetch/yakushi-logo.txt" fastfetch/yakushi-logo.txt
+backup_file "$HOME/.config/hypr/colors.css" hypr/colors.css; backup_file "$HOME/.config/hypr/colors.rasi" hypr/colors.rasi; backup_file "$HOME/.config/hypr/hyprland.lua" hypr/hyprland.lua; backup_file "$HOME/.config/hypr/hyprland.conf" hypr/hyprland.conf; backup_file "$HOME/.config/kitty/kitty.conf" kitty/kitty.conf; backup_file "$HOME/.config/kitty/yakushi-colors.conf" kitty/yakushi-colors.conf; backup_file "$HOME/.config/fastfetch/config.jsonc" fastfetch/config.jsonc; backup_file "$HOME/.config/fastfetch/logo.txt" fastfetch/logo.txt; backup_file "$HOME/.config/fastfetch/yakushi-logo.txt" fastfetch/yakushi-logo.txt
 rm -rf "$TARGET"; mkdir -p "$TARGET" "$HOME/.config/waybar/scripts" "$HOME/.config/rofi/scripts" "$HOME/.config/rofi/icons/power" "$HOME/.config/hypr" "$HOME/.config/kitty" "$HOME/.config/fastfetch" "$HOME/.local/share/applications"
 cp -a "$ROOT/yakushi_deck" "$TARGET/"; cp -a "$ROOT/integrations" "$TARGET/"; cp -a "$ROOT/tools" "$TARGET/"
 # Running Yakushi from a source checkout may leave harmless untracked Python
@@ -181,6 +181,17 @@ DESKTOP
 python3 -m compileall -q "$TARGET/yakushi_deck"
 python3 "$TARGET/tools/jsonc_check.py" "$HOME/.config/waybar/config.jsonc"
 rofi -no-config -theme "$HOME/.config/rofi/config.rasi" -dump-theme >/dev/null
+if ! rofi_glass_status="$(PYTHONPATH="$TARGET" python3 - <<'PY'
+from yakushi_deck.core.apps import ensure_rofi_glass
+
+ok, message = ensure_rofi_glass()
+print(message)
+raise SystemExit(0 if ok else 1)
+PY
+)"; then
+  fail "${rofi_glass_status:-Rofi layer blur setup failed.}"
+fi
+say "$rofi_glass_status"
 pkill -x waybar 2>/dev/null || true; nohup waybar >/tmp/yakushi-waybar.log 2>&1 &
 python3 - "$META" "$VERSION" "$BACKUP" "$original_backup" "$STAMP" "$legacy_packages_untracked" "$legacy_config_untracked" "${tracked_packages[@]}" <<'PY'
 import json, sys
